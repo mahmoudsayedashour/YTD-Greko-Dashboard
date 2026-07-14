@@ -1,7 +1,0 @@
-node_modules/
-.env
-.env.local
-
-# DO NOT ignore public/processed-data.json
-# It must be committed and deployed with the app.
-# Regenerate it by running: node scripts/processWorkbook.js
