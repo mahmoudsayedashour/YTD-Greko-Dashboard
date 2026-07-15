@@ -235,12 +235,19 @@ async function run() {
   const wb = XLSX.read(buf, { type: 'buffer', cellDates: true });
   console.log(`   Sheets: ${wb.SheetNames.join(', ')}`);
 
-  const required = ['Main Data', 'Customers', 'Forecast 25', 'Forecast 26', 'Actual 25', 'Actual 26'];
+  // Sheet names can vary slightly — accept both forms
+  const sheetAct25 = wb.SheetNames.find(n => /Actual.?25$/i.test(n)) || 'Actual 25';
+  const sheetAct26 = wb.SheetNames.find(n => /Actual.?2?0?26$/i.test(n)) || 'Actual 2026';
+  const sheetFct25 = wb.SheetNames.find(n => /Forecast.?25$/i.test(n)) || 'Forecast 25';
+  const sheetFct26 = wb.SheetNames.find(n => /Forecast.?2?0?26$/i.test(n)) || 'Forecast 26';
+
+  const required = ['Main Data', 'Customers', sheetFct25, sheetFct26, sheetAct25, sheetAct26];
   const missing  = required.filter(s => !wb.SheetNames.includes(s));
   if (missing.length) {
     console.error(`\n❌  Missing: ${missing.join(', ')}  |  Available: ${wb.SheetNames.join(', ')}`);
     process.exit(1);
   }
+  console.log(`   Using sheets: ${sheetAct25} / ${sheetAct26} / ${sheetFct25} / ${sheetFct26}`);
 
   // Step 3: Build lookup maps
   console.log('\n🗺  Building lookup maps…');
@@ -271,16 +278,16 @@ async function run() {
 
   // Step 4: Parse forecasts
   console.log('\n📈 Parsing forecasts…');
-  const fc25 = parseForecast(wb, 'Forecast 25');
-  const fc26 = parseForecast(wb, 'Forecast 26');
+  const fc25 = parseForecast(wb, sheetFct25);
+  const fc26 = parseForecast(wb, sheetFct26);
 
   // Step 5: Shared string table — no reference strings, only codes/names/types
   const ST = new StringTable();
 
   // Step 6: Parse actuals (identical pipeline for both years)
   console.log('\n📋 Parsing actuals…');
-  const rows25 = parseActual(wb, 'Actual 25', channelMap, ST);
-  const rows26 = parseActual(wb, 'Actual 26', channelMap, ST);
+  const rows25 = parseActual(wb, sheetAct25, channelMap, ST);
+  const rows26 = parseActual(wb, sheetAct26, channelMap, ST);
 
   // Step 7: Validation
   const v25 = daxValidate(rows25, ST, 'Actual 25  (full year)');
