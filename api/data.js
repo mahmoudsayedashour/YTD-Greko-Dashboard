@@ -390,6 +390,26 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET')     return res.status(405).json({ success: false, error: 'Method not allowed' });
 
+  // ── Filesystem diagnostic (append ?debug=1 to see env details) ──
+  if (req.query.debug === '1') {
+    const tryRead = p => { try { return fs.readdirSync(p); } catch(e) { return e.message; } };
+    const trySize = p => { try { return fs.statSync(p).size; } catch(e) { return e.message; } };
+    const root    = path.join(__dirname, '..');
+    const diag = {
+      __dirname,
+      cwd:      process.cwd(),
+      rootDir:  tryRead(root),
+      apiDir:   tryRead(__dirname),
+      publicDir: tryRead(path.join(root, 'public')),
+      candidates: [
+        path.join(__dirname, '..', 'public', 'processed-data.json'),
+        path.join(process.cwd(), 'public', 'processed-data.json'),
+        path.join(__dirname, 'processed-data.json'),
+      ].map(p => ({ path: p, exists: fs.existsSync(p), size: trySize(p) })),
+    };
+    return res.status(200).json(diag);
+  }
+
   let step = 'init';
   try {
     step = 'reading processed-data.json';
