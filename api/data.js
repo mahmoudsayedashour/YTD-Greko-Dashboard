@@ -14,7 +14,12 @@
 const fs   = require('fs');
 const path = require('path');
 
-const PROCESSED_DATA_PATH = path.join(process.cwd(), 'public', 'processed-data.json');
+
+// In Vercel serverless, __dirname = /var/task/api
+// includeFiles bundles public/processed-data.json at /var/task/public/processed-data.json
+// So we go up one level from __dirname (api/) to reach the project root.
+const PROCESSED_DATA_PATH = path.join(__dirname, '..', 'public', 'processed-data.json');
+
 
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MONTHS_FULL  = ['January','February','March','April','May','June',
@@ -33,19 +38,35 @@ let _cache = null;
 function getProcessedData() {
   if (_cache) return _cache;
 
-  if (!fs.existsSync(PROCESSED_DATA_PATH)) {
+  // Try both path strategies (covers local dev and Vercel serverless)
+  const candidates = [
+    path.join(__dirname, '..', 'public', 'processed-data.json'),    // Vercel: api/__dirname/../public/
+    path.join(process.cwd(), 'public', 'processed-data.json'),      // Local: cwd()/public/
+    path.join(__dirname, 'processed-data.json'),                     // Fallback: bundled next to api/data.js
+  ];
+
+  let found = null;
+  for (const p of candidates) {
+    if (fs.existsSync(p)) { found = p; break; }
+  }
+
+  if (!found) {
+    const tried = candidates.join(', ');
+    const cwd   = process.cwd();
+    const dir   = __dirname;
     throw new Error(
-      `processed-data.json not found at ${PROCESSED_DATA_PATH}. ` +
-      'Run: node scripts/processWorkbook.js'
+      `processed-data.json not found. __dirname=${dir}, cwd=${cwd}. Tried: ${tried}. ` +
+      'Run: node scripts/processWorkbook.js and commit public/processed-data.json'
     );
   }
 
-  console.log('[api/data] Reading processed-data.json…');
-  _cache = JSON.parse(fs.readFileSync(PROCESSED_DATA_PATH, 'utf8'));
+  console.log(`[api/data] Reading: ${found}`);
+  _cache = JSON.parse(fs.readFileSync(found, 'utf8'));
   const { version = 1, rows25, rows26, strings = [] } = _cache;
-  console.log(`[api/data] v${version} loaded | rows25=${rows25.length} rows26=${rows26.length} strings=${strings.length} generated=${_cache.generated}`);
+  console.log(`[api/data] v${version} loaded | rows25=${rows25.length} rows26=${rows26.length} strings=${strings.length}`);
   return _cache;
 }
+
 
 // ─────────────────────────────────────────────────────────────────
 // DAX Accumulator (THE single calculation engine — mirrors Power BI)
