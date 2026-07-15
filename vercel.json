@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "rewrites": [
-    { "source": "/api/health",        "destination": "/api/health.js" },
-    { "source": "/api/data",          "destination": "/api/data.js"   },
-    { "source": "/((?!api/).*)",      "destination": "/index.html"    }
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "src": "/(.*\\.(js|css|png|jpg|ico|svg)$)", "dest": "/$1" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }

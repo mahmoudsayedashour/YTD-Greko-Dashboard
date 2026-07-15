@@ -25,31 +25,44 @@ const MONTHS_FULL  = ['January','February','March','April','May','June',
 const R = { mo:0, cd:1, cu:2, t:3, rf_r:4, tn:5, ct:6, cp:7 };
 
 // ─────────────────────────────────────────────────────────────────
-// Data loader — Vercel auto-bundles require()'d JSON files,
-// so no includeFiles config needed in vercel.json.
-// For local dev the same require() resolves from the filesystem.
+// Data loader
+// Uses fs.readFileSync (not require) to avoid Vercel's bundler
+// inlining the 19MB JSON as a JS object — which is slow to parse.
+// The file is read directly from the filesystem at cold start.
+// Vercel includes all committed files in the function's /var/task.
 // ─────────────────────────────────────────────────────────────────
 let _cache = null;
 
 function getProcessedData() {
   if (_cache) return _cache;
 
-  try {
-    // Primary: bundled alongside the function by Vercel's bundler
-    _cache = require('../data/processed-data.json');
-  } catch (e1) {
-    try {
-      // Fallback: legacy location
-      _cache = require('../public/processed-data.json');
-    } catch (e2) {
-      throw new Error(
-        `Cannot load processed-data.json. ` +
-        `Primary error: ${e1.message}. Fallback error: ${e2.message}. ` +
-        `Run: node scripts/processWorkbook.js`
-      );
+  // Try both locations: data/ (new) and public/ (legacy)
+  const candidates = [
+    path.join(__dirname, '..', 'data',   'processed-data.json'),
+    path.join(__dirname, '..', 'public', 'processed-data.json'),
+    path.join(process.cwd(), 'data',     'processed-data.json'),
+    path.join(process.cwd(), 'public',   'processed-data.json'),
+  ];
+
+  let raw = null;
+  let usedPath = null;
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      usedPath = p;
+      raw = fs.readFileSync(p, 'utf8');
+      break;
     }
   }
 
+  if (!raw) {
+    throw new Error(
+      `processed-data.json not found. __dirname=${__dirname}, cwd=${process.cwd()}. ` +
+      `Tried: ${candidates.join(', ')}`
+    );
+  }
+
+  console.log(`[api/data] Reading ${usedPath} (${(raw.length/1024/1024).toFixed(1)} MB)…`);
+  _cache = JSON.parse(raw);
   const { version = 1, rows25, rows26, strings = [] } = _cache;
   console.log(`[api/data] v${version} | rows25=${rows25.length} rows26=${rows26.length} strings=${strings.length}`);
   return _cache;
