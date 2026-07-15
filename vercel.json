@@ -1,12 +1,5 @@
 {
   "version": 2,
-  "functions": {
-    "api/data.js": {
-      "memory": 1024,
-      "maxDuration": 30,
-      "includeFiles": "data/processed-data.json"
-    }
-  },
   "rewrites": [
     {
       "source": "/((?!api/).*)",

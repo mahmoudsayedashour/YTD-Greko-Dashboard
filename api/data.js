@@ -15,11 +15,6 @@ const fs   = require('fs');
 const path = require('path');
 
 
-// In Vercel serverless, __dirname = /var/task/api
-// includeFiles bundles data/processed-data.json at /var/task/data/processed-data.json
-const PROCESSED_DATA_PATH = path.join(__dirname, '..', 'data', 'processed-data.json');
-
-
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MONTHS_FULL  = ['January','February','March','April','May','June',
                       'July','August','September','October','November','December'];
@@ -30,43 +25,35 @@ const MONTHS_FULL  = ['January','February','March','April','May','June',
 const R = { mo:0, cd:1, cu:2, t:3, rf_r:4, tn:5, ct:6, cp:7 };
 
 // ─────────────────────────────────────────────────────────────────
-// In-memory cache (warm lambda invocations skip disk read)
+// Data loader — Vercel auto-bundles require()'d JSON files,
+// so no includeFiles config needed in vercel.json.
+// For local dev the same require() resolves from the filesystem.
 // ─────────────────────────────────────────────────────────────────
 let _cache = null;
 
 function getProcessedData() {
   if (_cache) return _cache;
 
-  // Try path candidates in order (covers Vercel serverless + local dev)
-  const candidates = [
-    path.join(__dirname, '..', 'data',   'processed-data.json'),  // Vercel: /var/task/data/
-    path.join(process.cwd(), 'data',     'processed-data.json'),  // Local: cwd()/data/
-    path.join(__dirname, '..', 'public', 'processed-data.json'),  // Legacy: public/
-    path.join(process.cwd(), 'public',   'processed-data.json'),  // Legacy local
-  ];
-
-  let found = null;
-  for (const p of candidates) {
-    if (fs.existsSync(p)) { found = p; break; }
+  try {
+    // Primary: bundled alongside the function by Vercel's bundler
+    _cache = require('../data/processed-data.json');
+  } catch (e1) {
+    try {
+      // Fallback: legacy location
+      _cache = require('../public/processed-data.json');
+    } catch (e2) {
+      throw new Error(
+        `Cannot load processed-data.json. ` +
+        `Primary error: ${e1.message}. Fallback error: ${e2.message}. ` +
+        `Run: node scripts/processWorkbook.js`
+      );
+    }
   }
 
-  if (!found) {
-    const tried = candidates.join(', ');
-    const cwd   = process.cwd();
-    const dir   = __dirname;
-    throw new Error(
-      `processed-data.json not found. __dirname=${dir}, cwd=${cwd}. Tried: ${tried}. ` +
-      'Run: node scripts/processWorkbook.js and commit public/processed-data.json'
-    );
-  }
-
-  console.log(`[api/data] Reading: ${found}`);
-  _cache = JSON.parse(fs.readFileSync(found, 'utf8'));
   const { version = 1, rows25, rows26, strings = [] } = _cache;
-  console.log(`[api/data] v${version} loaded | rows25=${rows25.length} rows26=${rows26.length} strings=${strings.length}`);
+  console.log(`[api/data] v${version} | rows25=${rows25.length} rows26=${rows26.length} strings=${strings.length}`);
   return _cache;
 }
-
 
 // ─────────────────────────────────────────────────────────────────
 // DAX Accumulator (THE single calculation engine — mirrors Power BI)
