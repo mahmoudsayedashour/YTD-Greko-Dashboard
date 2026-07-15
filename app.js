@@ -216,14 +216,13 @@ async function fetchData(months) {
 // ═══════════════════════════════════════════════════════════════
 const PAGE_TITLES = {
   home:      'YTD Greko Egypt Dashboard',
-  ytd:       'YTD Performance',
-  products:  'Product Analysis',
+  ytd:       'SKU YTD Performance',
+  products:  'Category Analysis',
   customers: 'Customer Analysis',
   channels:  'Channel Analysis',
   returns:   'Returns Analysis',
   growth:    'Growth Analysis',
-  monthly:   'Monthly Trend',
-  quarterly: 'Quarterly Dashboard',
+  monthly:   'Target Analysis',
 };
 
 function go(page) {
@@ -249,7 +248,6 @@ function renderPage() {
     case 'returns':   pgReturns(D);   break;
     case 'growth':    pgGrowth(D);    break;
     case 'monthly':   pgMonthly(D);   break;
-    case 'quarterly': pgQuarterly(D); break;
   }
   attachSort();
 }
@@ -276,21 +274,19 @@ function pgHome(D) {
                                     .sort((a, b) => b[M].s26 - a[M].s26);
 
   document.getElementById('page-home').innerHTML = `
-    <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
-      ${kpi('💰', `Sales 2026`, fmt(mm.s26), null, 'cyan', `Target: ${hasTgt(mm.tgt26) ? fmt(mm.tgt26) : 'N/A'}`)}
-      ${kpi('📅', `Sales 2025`, fmt(mm.s25), null, 'blue', `Target: ${hasTgt(mm.tgt25) ? fmt(mm.tgt25) : 'N/A'}`)}
-      ${kpi('📈', 'Growth %', fmtP(g), g, 'green', `Δ ${fmt(variance)}`)}
-      ${kpi('🎯', 'Achievement 26', a26 != null ? a26.toFixed(1) + '%' : 'N/A', a26 != null ? a26 - 100 : null, 'cyan', `2025: ${a25 != null ? a25.toFixed(1) + '%' : 'N/A'}`)}
-      ${kpi('↩️', 'Returns 26', fmt(mm.r26), null, 'red', `2025: ${fmt(mm.r25)}`)}
-      ${kpi('📉', 'Return Rate 26', rp26.toFixed(1) + '%', -(rp26 - rp25), 'red', `Was: ${rp25.toFixed(1)}%`)}
+    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+      ${kpi('📅', `Sales 2025`, fmt(mm.s25), null, 'blue', 'Prior Year Actual')}
+      ${kpi('🎯', `Target 2025`, hasTgt(mm.tgt25) ? fmt(mm.tgt25) : 'N/A', null, 'gold', 'Prior Year Target')}
+      ${kpi('💰', `Sales 2026`, fmt(mm.s26), null, 'cyan', 'Current Year Actual')}
+      ${kpi('🎯', `Target 2026`, hasTgt(mm.tgt26) ? fmt(mm.tgt26) : 'N/A', null, 'gold', 'Current Year Target')}
     </div>
 
     <!-- Year Comparison KPIs -->
     <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-top:16px">
-      ${kpi('⚖️', 'Sales Variance', fmt(variance), g, 'cyan', '2026 vs 2025')}
-      ${kpi('👥', 'Customers 26', m.customers_26.toString(), m.customers_26 - m.customers_25, 'blue', `Was: ${m.customers_25}`)}
-      ${kpi('🔄', 'Partial Returns 26', fmt(mm.partial26), null, 'gold', `2025: ${fmt(mm.partial25)}`)}
-      ${kpi('↩️', 'Return Δ', fmt(retVariance), retVariance <= 0 ? 10 : -10, 'red', '2026 - 2025')}
+      ${kpi('🎯', 'Achievement 26', a26 != null ? a26.toFixed(1) + '%' : 'N/A', a26 != null ? a26 - 100 : null, 'cyan', `2025: ${a25 != null ? a25.toFixed(1) + '%' : 'N/A'}`)}
+      ${kpi('📈', 'Growth Ton', fmt(variance), variance, 'green', 'Year over Year Δ')}
+      ${kpi('📈', 'Growth %', fmtP(g), g, 'green', 'Year over Year %')}
+      ${kpi('↩️', 'Return Rate 26', rp26.toFixed(1) + '%', -(rp26 - rp25), 'red', `Was: ${rp25.toFixed(1)}%`)}
     </div>
 
     <div class="chart-grid cols-2" style="margin-top:20px">
@@ -374,36 +370,40 @@ function pgYTD(D) {
 
   document.getElementById('page-ytd').innerHTML = `
     <div class="chart-card">
-      <div class="chart-header"><div class="chart-title">📋 Full YTD Product Matrix</div></div>
+      <div class="chart-header"><div class="chart-title">📋 SKU YTD Performance</div></div>
       <div class="data-table-wrapper" style="max-height:500px;overflow-y:auto">
         <table class="data-table">
           <thead><tr>
-            <th>#</th>
-            ${thSort('Product', 'name')}
+            <th>Index</th>
+            ${thSort('SKU', 'name')}
             <th>Category</th>
             ${thSort('Sales 25', 's25')}
+            ${thSort('Return 25 %', 'r25')}
             ${thSort('Sales 26', 's26')}
-            ${thSort('Growth', 'grow')}
-            ${thSort('Target 26', 'tgt26')}
-            ${thSort('Ach%', 'ach26')}
-            ${thSort('Ret% 26', 'retP')}
+            ${thSort('Return 26 %', 'r26')}
+            ${thSort('Achievement %', 'ach26')}
+            ${thSort('Growth Ton', 'grow')}
+            ${thSort('Growth %', 'grow')}
           </tr></thead>
           <tbody>
             ${items.filter(p => p[M].s25 > 0 || p[M].s26 > 0).map((p, i) => {
-              const s25 = p[M].s25, s26 = p[M].s26, t26 = p[M].tgt26, r26 = p[M].r26;
+              const s25 = p[M].s25, s26 = p[M].s26, t26 = p[M].tgt26, r26 = p[M].r26, r25 = p[M].r25;
               const g = grow(s26, s25);
+              const variance = s26 - s25;
               const a = hasTgt(t26) ? ach(s26, t26) : null;
-              const r = retP(s26, r26);
+              const ret26 = retP(s26, r26);
+              const ret25 = retP(s25, r25);
               return `<tr>
                 <td>${i + 1}</td>
                 <td>${p.product}</td>
                 <td style="color:${catColor(p.category)}">${p.category}</td>
                 <td class="num">${fmt(s25)}</td>
+                <td class="num" style="color:${ret25 > 10 ? C.red : ret25 > 5 ? C.gold : C.green}">${ret25.toFixed(1)}%</td>
                 <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
-                <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
-                <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
+                <td class="num" style="color:${ret26 > 10 ? C.red : ret26 > 5 ? C.gold : C.green}">${ret26.toFixed(1)}%</td>
                 <td class="num">${achBadge(a)}</td>
-                <td class="num" style="color:${r > 10 ? C.red : r > 5 ? C.gold : C.green}">${r.toFixed(1)}%</td>
+                <td class="num">${fmt(variance)}</td>
+                <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
               </tr>`;
             }).join('')}
           </tbody>
@@ -418,15 +418,15 @@ function pgYTD(D) {
 // ═══════════════════════════════════════════════════════════════
 function pgProducts(D) {
   const M     = STATE.measure;
-  const prods = sortData(D.product_data.filter(p => p[M].s26 > 0 || p[M].s25 > 0));
-  const top10 = prods.slice(0, 10);
-  const bot10 = [...prods].filter(p => p[M].s25 > 0).sort((a, b) => grow(a[M].s26, a[M].s25) - grow(b[M].s26, b[M].s25)).slice(0, 10);
-  const cg    = [...D.category_data].sort((a, b) => b[M].s26 - a[M].s26);
+  const cats  = sortData(D.category_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0).map(c => ({ ...c, name: c.category })));
+  
+  const top10 = cats.slice(0, 10);
+  const bot10 = [...cats].filter(c => c[M].s25 > 0).sort((a, b) => grow(a[M].s26, a[M].s25) - grow(b[M].s26, b[M].s25)).slice(0, 10);
 
   document.getElementById('page-products').innerHTML = `
     <div class="chart-grid cols-2">
-      ${card('🏆 Top 10 Products 2026', 'By absolute sales', cw('ch-p-top', '300'))}
-      ${card('📉 Bottom 10 Products', 'By growth %', cw('ch-p-bot', '300'))}
+      ${card('🏆 Top 10 Categories 2026', 'By absolute sales', cw('ch-p-top', '300'))}
+      ${card('📉 Bottom 10 Categories', 'By growth %', cw('ch-p-bot', '300'))}
     </div>
     <div class="chart-grid cols-1" style="margin-top:20px">
       ${card('📊 Category Performance', 'Sales & Achievement 2026', cw('ch-p-catsum', '300'))}
@@ -435,26 +435,33 @@ function pgProducts(D) {
       <div class="chart-header"><div class="chart-title">📋 Category Summary</div></div>
       <table class="data-table">
         <thead><tr>
+          <th>Index</th>
           ${thSort('Category', 'name')}
           ${thSort('Sales 25', 's25')}
+          ${thSort('Return 25 %', 'r25')}
           ${thSort('Sales 26', 's26')}
-          ${thSort('Growth', 'grow')}
-          ${thSort('Target 26', 'tgt26')}
-          ${thSort('Achievement', 'ach26')}
-          ${thSort('Return 26', 'r26')}
+          ${thSort('Return 26 %', 'r26')}
+          ${thSort('Achievement %', 'ach26')}
+          ${thSort('Growth Ton', 'grow')}
+          ${thSort('Growth %', 'grow')}
         </tr></thead>
-        <tbody>${sortData(D.category_data.map(c => ({ ...c, name: c.category }))).map(c => {
-          const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r26 = c[M].r26;
+        <tbody>${cats.map((c, i) => {
+          const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r26 = c[M].r26, r25 = c[M].r25;
           const g = grow(s26, s25);
+          const variance = s26 - s25;
           const a = hasTgt(t26) ? ach(s26, t26) : null;
+          const ret26 = retP(s26, r26);
+          const ret25 = retP(s25, r25);
           return `<tr>
+            <td>${i + 1}</td>
             <td style="color:${catColor(c.category)}"><strong>${c.category}</strong></td>
             <td class="num">${fmt(s25)}</td>
+            <td class="num" style="color:${ret25 > 10 ? C.red : ret25 > 5 ? C.gold : C.green}">${ret25.toFixed(1)}%</td>
             <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
-            <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
-            <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
+            <td class="num" style="color:${ret26 > 10 ? C.red : ret26 > 5 ? C.gold : C.green}">${ret26.toFixed(1)}%</td>
             <td class="num">${achBadge(a)}</td>
-            <td class="num" style="color:${C.red}">${fmt(r26)}</td>
+            <td class="num">${fmt(variance)}</td>
+            <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
           </tr>`;
         }).join('')}</tbody>
       </table>
@@ -462,18 +469,18 @@ function pgProducts(D) {
   `;
   setTimeout(() => {
     mkChart('ch-p-top', { type: 'bar',
-      data: { labels: top10.map(p => trunc(p.product, 20)), datasets: [{ data: top10.map(p => p[M].s26), backgroundColor: C.cyan + 'BB', borderRadius: 4 }] },
+      data: { labels: top10.map(c => trunc(c.category, 20)), datasets: [{ data: top10.map(c => c[M].s26), backgroundColor: top10.map(c => catColor(c.category) + 'BB'), borderRadius: 4 }] },
       options: barOpts(true),
     });
     mkChart('ch-p-bot', { type: 'bar',
-      data: { labels: bot10.map(p => trunc(p.product, 20)), datasets: [{ data: bot10.map(p => grow(p[M].s26, p[M].s25)), backgroundColor: C.red + 'BB', borderRadius: 4, datalabels: { formatter: v => fmtP(v) } }] },
+      data: { labels: bot10.map(c => trunc(c.category, 20)), datasets: [{ data: bot10.map(c => grow(c[M].s26, c[M].s25)), backgroundColor: C.red + 'BB', borderRadius: 4, datalabels: { formatter: v => fmtP(v) } }] },
       options: barOpts(true),
     });
     mkChart('ch-p-catsum', { type: 'bar',
-      data: { labels: cg.map(c => c.category),
+      data: { labels: cats.map(c => c.category),
         datasets: [
-          { label: '2025', data: cg.map(c => c[M].s25), backgroundColor: C.blueL + 'AA', borderRadius: 3 },
-          { label: '2026', data: cg.map(c => c[M].s26), backgroundColor: cg.map(c => catColor(c.category) + 'CC'), borderRadius: 3 },
+          { label: '2025', data: cats.map(c => c[M].s25), backgroundColor: C.blueL + 'AA', borderRadius: 3 },
+          { label: '2026', data: cats.map(c => c[M].s26), backgroundColor: cats.map(c => catColor(c.category) + 'CC'), borderRadius: 3 },
         ] },
       options: { ...barOpts(), plugins: { legend: { position: 'top' } } },
     });
@@ -512,28 +519,36 @@ function pgCustomers(D) {
       <div class="data-table-wrapper" style="max-height:400px;overflow-y:auto">
         <table class="data-table">
           <thead><tr>
-            <th>#</th>
+            <th>Index</th>
             ${thSort('Customer', 'name')}
             <th>Channel</th>
             ${thSort('Sales 25', 's25')}
+            ${thSort('Return 25 %', 'r25')}
             ${thSort('Sales 26', 's26')}
-            ${thSort('Growth', 'grow')}
-            ${thSort('Return 26', 'r26')}
-            ${thSort('Ret%', 'retP')}
+            ${thSort('Return 26 %', 'r26')}
+            ${thSort('Achievement %', 'ach26')}
+            ${thSort('Growth Ton', 'grow')}
+            ${thSort('Growth %', 'grow')}
           </tr></thead>
           <tbody>${sortData(cs.map(c => ({ ...c, name: c.customer }))).map((c, i) => {
-            const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
-            const g = grow(s26, s25), rp = retP(s26, r26);
+            const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r26 = c[M].r26, r25 = c[M].r25;
+            const g = grow(s26, s25);
+            const variance = s26 - s25;
+            const a = hasTgt(t26) ? ach(s26, t26) : null;
+            const ret26 = retP(s26, r26);
+            const ret25 = retP(s25, r25);
             const tier = i < 10 ? '🥇' : i < 10 + silver.length ? '🥈' : '🥉';
             return `<tr>
               <td>${tier} ${i + 1}</td>
               <td>${trunc(c.customer, 28)}</td>
               <td><span class="badge badge-gray">${c.channel || '–'}</span></td>
               <td class="num">${fmt(s25)}</td>
+              <td class="num" style="color:${ret25 > 10 ? C.red : ret25 > 5 ? C.gold : C.green}">${ret25.toFixed(1)}%</td>
               <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+              <td class="num" style="color:${ret26 > 10 ? C.red : ret26 > 5 ? C.gold : C.green}">${ret26.toFixed(1)}%</td>
+              <td class="num">${achBadge(a)}</td>
+              <td class="num">${fmt(variance)}</td>
               <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
-              <td class="num" style="color:${C.red}">${fmt(r26)}</td>
-              <td class="num" style="color:${rp > 10 ? C.red : rp > 5 ? C.gold : C.green}">${rp.toFixed(1)}%</td>
             </tr>`;
           }).join('')}</tbody>
         </table>
@@ -781,34 +796,54 @@ function pgReturns(D) {
 function pgGrowth(D) {
   const M    = STATE.measure;
   const cats = sortData(D.category_data.map(c => ({ ...c, name: c.category }))).filter(c => c[M].s25 > 0 || c[M].s26 > 0);
+  const chs  = [...D.channel_data].filter(c => c[M].s25 > 0 || c[M].s26 > 0);
+  const md   = [...D.monthly_data].filter(x => STATE.months.includes(x.month_id)).sort((a, b) => a.month_id - b.month_id);
 
   document.getElementById('page-growth').innerHTML = `
     <div class="chart-grid cols-2">
       ${card('📊 Growth Variance by Category', 'Absolute Δ (2026 − 2025)', cw('ch-g-cat', '350'))}
       ${card('📈 Growth % by Category', 'Relative Δ', cw('ch-g-catp', '350'))}
     </div>
+    <div class="chart-grid cols-2" style="margin-top:20px">
+      ${card('🏪 Growth by Channel', 'Absolute Δ (2026 − 2025)', cw('ch-g-ch', '350'))}
+      ${card('📅 Growth by Month', 'Absolute Δ (2026 − 2025)', cw('ch-g-mon', '350'))}
+    </div>
     <div class="chart-card" style="margin-top:20px">
-      <div class="chart-header"><div class="chart-title">📋 Growth Detail Table</div></div>
-      <table class="data-table">
-        <thead><tr>
-          ${thSort('Category', 'name')}
-          ${thSort('Sales 25', 's25')}
-          ${thSort('Sales 26', 's26')}
-          ${thSort('Growth Δ', 'grow')}
-          ${thSort('Achievement', 'ach26')}
-        </tr></thead>
-        <tbody>${cats.map(c => {
-          const g = grow(c[M].s26, c[M].s25);
-          const a = hasTgt(c[M].tgt26) ? ach(c[M].s26, c[M].tgt26) : null;
-          return `<tr>
-            <td style="color:${catColor(c.category)}">${c.category}</td>
-            <td class="num">${fmt(c[M].s25)}</td>
-            <td class="num" style="color:${C.cyan}">${fmt(c[M].s26)}</td>
-            <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
-            <td class="num">${achBadge(a)}</td>
-          </tr>`;
-        }).join('')}</tbody>
-      </table>
+      <div class="chart-header"><div class="chart-title">📋 Growth Detail Table (Category)</div></div>
+      <div class="data-table-wrapper" style="max-height:400px;overflow-y:auto">
+        <table class="data-table">
+          <thead><tr>
+            <th>Index</th>
+            ${thSort('Category', 'name')}
+            ${thSort('Sales 25', 's25')}
+            ${thSort('Return 25 %', 'r25')}
+            ${thSort('Sales 26', 's26')}
+            ${thSort('Return 26 %', 'r26')}
+            ${thSort('Achievement %', 'ach26')}
+            ${thSort('Growth Ton', 'grow')}
+            ${thSort('Growth %', 'grow')}
+          </tr></thead>
+          <tbody>${cats.map((c, i) => {
+            const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r26 = c[M].r26, r25 = c[M].r25;
+            const g = grow(s26, s25);
+            const variance = s26 - s25;
+            const a = hasTgt(t26) ? ach(s26, t26) : null;
+            const ret26 = retP(s26, r26);
+            const ret25 = retP(s25, r25);
+            return `<tr>
+              <td>${i + 1}</td>
+              <td style="color:${catColor(c.category)}"><strong>${c.category}</strong></td>
+              <td class="num">${fmt(s25)}</td>
+              <td class="num" style="color:${ret25 > 10 ? C.red : ret25 > 5 ? C.gold : C.green}">${ret25.toFixed(1)}%</td>
+              <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+              <td class="num" style="color:${ret26 > 10 ? C.red : ret26 > 5 ? C.gold : C.green}">${ret26.toFixed(1)}%</td>
+              <td class="num">${achBadge(a)}</td>
+              <td class="num">${fmt(variance)}</td>
+              <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>
     </div>
   `;
   setTimeout(() => {
@@ -828,6 +863,21 @@ function pgGrowth(D) {
           borderRadius: 4, datalabels: { formatter: v => fmtP(v) } }] },
       options: barOpts(true),
     });
+    const chSort = [...chs].sort((a, b) => (b[M].s26 - b[M].s25) - (a[M].s26 - a[M].s25));
+    mkChart('ch-g-ch', { type: 'bar',
+      data: { labels: chSort.map(c => c.channel),
+        datasets: [{ data: chSort.map(c => c[M].s26 - c[M].s25),
+          backgroundColor: chSort.map(c => c[M].s26 >= c[M].s25 ? C.cyan + 'CC' : C.red + 'CC'),
+          borderRadius: 4, datalabels: { formatter: v => (v >= 0 ? '+' : '') + fmt(v) } }] },
+      options: barOpts(true),
+    });
+    mkChart('ch-g-mon', { type: 'bar',
+      data: { labels: md.map(m => m.month_short),
+        datasets: [{ data: md.map(m => m[M].s26 - m[M].s25),
+          backgroundColor: md.map(m => m[M].s26 >= m[M].s25 ? C.gold + 'CC' : C.red + 'CC'),
+          borderRadius: 4, datalabels: { formatter: v => (v >= 0 ? '+' : '') + fmt(v) } }] },
+      options: barOpts(true),
+    });
   }, 50);
 }
 
@@ -837,41 +887,65 @@ function pgGrowth(D) {
 function pgMonthly(D) {
   const M  = STATE.measure;
   const md = [...D.monthly_data].sort((a, b) => a.month_id - b.month_id);
+  const m  = D.meta[M];
+
+  const a25 = hasTgt(m.tgt25) ? ach(m.s25, m.tgt25) : null;
+  const a26 = hasTgt(m.tgt26) ? ach(m.s26, m.tgt26) : null;
+
   document.getElementById('page-monthly').innerHTML = `
-    <div class="chart-grid cols-1">
-      ${card('📅 Monthly Detail', 'Sales 2025 vs 2026 vs Target', cw('ch-m-bar', '350'))}
+    <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
+      ${kpi('📅', 'Sales 2025', fmt(m.s25), null, 'blue', '')}
+      ${kpi('🎯', 'Target 2025', hasTgt(m.tgt25) ? fmt(m.tgt25) : 'N/A', null, 'gold', '')}
+      ${kpi('🏅', 'Achievement 25', a25 != null ? a25.toFixed(1) + '%' : 'N/A', a25 != null ? a25 - 100 : null, 'blue', '')}
+      ${kpi('💰', 'Sales 2026', fmt(m.s26), null, 'cyan', '')}
+      ${kpi('🎯', 'Target 2026', hasTgt(m.tgt26) ? fmt(m.tgt26) : 'N/A', null, 'gold', '')}
+      ${kpi('🏆', 'Achievement 26', a26 != null ? a26.toFixed(1) + '%' : 'N/A', a26 != null ? a26 - 100 : null, 'cyan', '')}
+    </div>
+    <div class="chart-grid cols-2" style="margin-top:20px">
+      ${card('📅 2025 Target vs Actual', 'By Month', cw('ch-tgt-25', '350'))}
+      ${card('💰 2026 Target vs Actual', 'By Month', cw('ch-tgt-26', '350'))}
     </div>
     <div class="chart-card" style="margin-top:20px">
+      <div class="chart-header"><div class="chart-title">📋 Target Detail Table</div></div>
       <table class="data-table">
         <thead><tr>
           <th>Month</th>
-          <th class="num">Sales 25</th><th class="num">Sales 26</th>
-          <th class="num">Growth</th>
-          <th class="num">Target 26</th><th class="num">Ach%</th>
-          <th class="num">Return 26</th>
+          ${thSort('Sales 25', 's25')}
+          ${thSort('Target 25', 'tgt25')}
+          ${thSort('Ach 25%', 'ach25')}
+          ${thSort('Sales 26', 's26')}
+          ${thSort('Target 26', 'tgt26')}
+          ${thSort('Ach 26%', 'ach26')}
         </tr></thead>
         <tbody>${md.map(x => {
-          const s25 = x[M].s25, s26 = x[M].s26, t26 = x[M].tgt26, r26 = x[M].r26;
-          const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
+          const s25 = x[M].s25, t25 = x[M].tgt25, a25_m = hasTgt(t25) ? ach(s25, t25) : null;
+          const s26 = x[M].s26, t26 = x[M].tgt26, a26_m = hasTgt(t26) ? ach(s26, t26) : null;
           return `<tr>
-            <td><strong>${x.month_name}</strong> ${x.in_ytd ? badge('YTD', 'badge-new') : ''}</td>
+            <td><strong>${x.month_name}</strong> ${x.in_period ? badge('YTD', 'badge-new') : ''}</td>
             <td class="num">${fmt(s25)}</td>
+            <td class="num">${hasTgt(t25) ? fmt(t25) : '–'}</td>
+            <td class="num">${achBadge(a25_m)}</td>
             <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
-            <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
             <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
-            <td class="num">${achBadge(a)}</td>
-            <td class="num" style="color:${C.red}">${fmt(r26)}</td>
+            <td class="num">${achBadge(a26_m)}</td>
           </tr>`;
         }).join('')}</tbody>
       </table>
     </div>
   `;
   setTimeout(() => {
-    mkChart('ch-m-bar', { type: 'bar',
+    mkChart('ch-tgt-25', { type: 'bar',
       data: { labels: md.map(x => x.month_short),
         datasets: [
-          { label: '2025', data: md.map(x => x[M].s25), backgroundColor: C.blueL + 'AA', borderRadius: 3 },
-          { label: '2026', data: md.map(x => x[M].s26), backgroundColor: C.cyan  + 'CC', borderRadius: 3 },
+          { label: 'Sales 25', data: md.map(x => x[M].s25), backgroundColor: C.blueL + 'AA', borderRadius: 3 },
+          { label: 'Target 25', data: md.map(x => x[M].tgt25), type: 'line', borderColor: C.gold, borderDash: [4, 4], fill: false, pointRadius: 0, datalabels: { display: false } },
+        ] },
+      options: { ...barOpts(), plugins: { legend: { position: 'top' } } },
+    });
+    mkChart('ch-tgt-26', { type: 'bar',
+      data: { labels: md.map(x => x.month_short),
+        datasets: [
+          { label: 'Sales 26', data: md.map(x => x[M].s26), backgroundColor: C.cyan + 'CC', borderRadius: 3 },
           { label: 'Target 26', data: md.map(x => x[M].tgt26), type: 'line', borderColor: C.gold, borderDash: [4, 4], fill: false, pointRadius: 0, datalabels: { display: false } },
         ] },
       options: { ...barOpts(), plugins: { legend: { position: 'top' } } },
@@ -879,49 +953,7 @@ function pgMonthly(D) {
   }, 50);
 }
 
-// ═══════════════════════════════════════════════════════════════
-// QUARTERLY
-// ═══════════════════════════════════════════════════════════════
-function pgQuarterly(D) {
-  const M  = STATE.measure;
-  const qm = STATE.period === 'q1' ? [1,2,3] : STATE.period === 'q2' ? [4,5,6] : STATE.months;
-  const fil = [...D.monthly_data].filter(x => qm.includes(x.month_id)).sort((a, b) => a.month_id - b.month_id);
 
-  let s25 = 0, s26 = 0, t26 = 0, r25 = 0, r26 = 0;
-  fil.forEach(x => { s25 += x[M].s25; s26 += x[M].s26; if (x[M].tgt26) t26 += x[M].tgt26; r25 += x[M].r25; r26 += x[M].r26; });
-  const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
-
-  document.getElementById('page-quarterly').innerHTML = `
-    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
-      ${kpi('💰', 'Sales 2026', fmt(s26), null, 'cyan', `Target: ${hasTgt(t26) ? fmt(t26) : 'N/A'}`)}
-      ${kpi('📅', 'Sales 2025', fmt(s25), null, 'blue', '')}
-      ${kpi('📈', 'Growth', fmtP(g), g, 'green', '')}
-      ${kpi('🎯', 'Achievement', a != null ? a.toFixed(1) + '%' : 'N/A', a != null ? a - 100 : null, 'cyan', '')}
-    </div>
-    <div class="chart-grid cols-2" style="margin-top:20px">
-      ${card('📊 Sales by Month', '', cw('ch-q-sales', '300'))}
-      ${card('↩️ Returns by Month', '', cw('ch-q-ret', '300'))}
-    </div>
-  `;
-  setTimeout(() => {
-    mkChart('ch-q-sales', { type: 'bar',
-      data: { labels: fil.map(x => x.month_short),
-        datasets: [
-          { label: '2025', data: fil.map(x => x[M].s25), backgroundColor: C.blueL + 'AA', borderRadius: 3 },
-          { label: '2026', data: fil.map(x => x[M].s26), backgroundColor: C.cyan  + 'CC', borderRadius: 3 },
-        ] },
-      options: { ...barOpts(), plugins: { legend: { position: 'top' } } },
-    });
-    mkChart('ch-q-ret', { type: 'bar',
-      data: { labels: fil.map(x => x.month_short),
-        datasets: [
-          { label: '2025', data: fil.map(x => x[M].r25), backgroundColor: C.blueL + 'AA', borderRadius: 3 },
-          { label: '2026', data: fil.map(x => x[M].r26), backgroundColor: C.red   + 'CC', borderRadius: 3 },
-        ] },
-      options: { ...barOpts(), plugins: { legend: { position: 'top' } } },
-    });
-  }, 50);
-}
 
 // ═══════════════════════════════════════════════════════════════
 // LOADING UI
@@ -990,6 +1022,39 @@ function setupAuth() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// SANITIZE DATA (Enforce strict channel mapping on Frontend)
+// ═══════════════════════════════════════════════════════════════
+function sanitizeData(data) {
+  if (!data || !data.channel_data || !data.meta) return;
+  const validChannels = ['KA', 'KR', 'Online', 'B2B', 'TT', 'DIS'];
+  
+  // Filter channel data
+  const filteredChannels = data.channel_data.filter(c => validChannels.includes(c.channel));
+  
+  // Recalculate global meta using only valid channels
+  const metrics = ['ton', 'carton', 'cups'];
+  metrics.forEach(m => {
+    if (!data.meta[m]) return;
+    data.meta[m].s25 = 0; data.meta[m].r25 = 0; data.meta[m].partial25 = 0;
+    data.meta[m].s26 = 0; data.meta[m].r26 = 0; data.meta[m].partial26 = 0;
+    
+    filteredChannels.forEach(c => {
+      if (c[m]) {
+        data.meta[m].s25 += c[m].s25 || 0;
+        data.meta[m].r25 += c[m].r25 || 0;
+        data.meta[m].partial25 += c[m].partial25 || 0;
+        data.meta[m].s26 += c[m].s26 || 0;
+        data.meta[m].r26 += c[m].r26 || 0;
+        data.meta[m].partial26 += c[m].partial26 || 0;
+      }
+    });
+  });
+  
+  // Update the filtered channel data back into state
+  data.channel_data = filteredChannels;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // MAIN LOAD & RENDER
 // ═══════════════════════════════════════════════════════════════
 async function loadAndRender() {
@@ -997,6 +1062,7 @@ async function loadAndRender() {
   setLoaderText('Fetching data…');
   try {
     STATE.data = await fetchData(STATE.months);
+    sanitizeData(STATE.data);
     const period = STATE.data.meta.period || '';
     document.getElementById('ytd-label-top').textContent = period;
     document.getElementById('last-update').textContent   = period;
@@ -1020,6 +1086,7 @@ async function reloadForPeriod() {
   setLoaderText('Loading…');
   try {
     STATE.data = await fetchData(STATE.months);
+    sanitizeData(STATE.data);
     const period = STATE.data.meta.period || '';
     document.getElementById('ytd-label-top').textContent = period;
     document.getElementById('last-update').textContent   = period;
