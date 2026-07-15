@@ -16,9 +16,8 @@ const path = require('path');
 
 
 // In Vercel serverless, __dirname = /var/task/api
-// includeFiles bundles public/processed-data.json at /var/task/public/processed-data.json
-// So we go up one level from __dirname (api/) to reach the project root.
-const PROCESSED_DATA_PATH = path.join(__dirname, '..', 'public', 'processed-data.json');
+// includeFiles bundles data/processed-data.json at /var/task/data/processed-data.json
+const PROCESSED_DATA_PATH = path.join(__dirname, '..', 'data', 'processed-data.json');
 
 
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -38,11 +37,12 @@ let _cache = null;
 function getProcessedData() {
   if (_cache) return _cache;
 
-  // Try both path strategies (covers local dev and Vercel serverless)
+  // Try path candidates in order (covers Vercel serverless + local dev)
   const candidates = [
-    path.join(__dirname, '..', 'public', 'processed-data.json'),    // Vercel: api/__dirname/../public/
-    path.join(process.cwd(), 'public', 'processed-data.json'),      // Local: cwd()/public/
-    path.join(__dirname, 'processed-data.json'),                     // Fallback: bundled next to api/data.js
+    path.join(__dirname, '..', 'data',   'processed-data.json'),  // Vercel: /var/task/data/
+    path.join(process.cwd(), 'data',     'processed-data.json'),  // Local: cwd()/data/
+    path.join(__dirname, '..', 'public', 'processed-data.json'),  // Legacy: public/
+    path.join(process.cwd(), 'public',   'processed-data.json'),  // Legacy local
   ];
 
   let found = null;
@@ -400,11 +400,13 @@ module.exports = async function handler(req, res) {
       cwd:      process.cwd(),
       rootDir:  tryRead(root),
       apiDir:   tryRead(__dirname),
+      dataDir:  tryRead(path.join(root, 'data')),
       publicDir: tryRead(path.join(root, 'public')),
       candidates: [
+        path.join(__dirname, '..', 'data',   'processed-data.json'),
+        path.join(process.cwd(), 'data',     'processed-data.json'),
         path.join(__dirname, '..', 'public', 'processed-data.json'),
-        path.join(process.cwd(), 'public', 'processed-data.json'),
-        path.join(__dirname, 'processed-data.json'),
+        path.join(process.cwd(), 'public',   'processed-data.json'),
       ].map(p => ({ path: p, exists: fs.existsSync(p), size: trySize(p) })),
     };
     return res.status(200).json(diag);

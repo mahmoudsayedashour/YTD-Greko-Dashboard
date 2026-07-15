@@ -36,7 +36,7 @@ const path  = require('path');
 const WORKBOOK_URL =
   'https://kpvezuvifxoatyen.public.blob.vercel-storage.com/New%20Microsoft%20Excel%20Worksheet.xlsx';
 
-const OUTPUT_PATH = path.join(__dirname, '..', 'public', 'processed-data.json');
+const OUTPUT_PATH = path.join(__dirname, '..', 'data', 'processed-data.json');
 
 const MONTHS_FULL = ['January','February','March','April','May','June',
                      'July','August','September','October','November','December'];

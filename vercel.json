@@ -4,7 +4,7 @@
     "api/data.js": {
       "memory": 1024,
       "maxDuration": 30,
-      "includeFiles": "public/processed-data.json"
+      "includeFiles": "data/processed-data.json"
     }
   },
   "rewrites": [
