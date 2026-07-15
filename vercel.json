@@ -1,8 +1,14 @@
 {
   "version": 2,
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/(.*\\.(js|css|png|jpg|ico|svg)$)", "dest": "/$1" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "functions": {
+    "api/data.js": {
+      "includeFiles": "data/processed-data.json"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
   ]
 }
