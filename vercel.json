@@ -1,0 +1,14 @@
+{
+  "functions": {
+    "api/data.js": {
+      "includeFiles": "public/processed-data.json",
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
