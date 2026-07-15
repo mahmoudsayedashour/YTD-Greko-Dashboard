@@ -2,19 +2,12 @@
   "version": 2,
   "functions": {
     "api/data.js": {
-      "memory": 3008,
-      "maxDuration": 60
+      "memory": 1024,
+      "maxDuration": 30,
+      "includeFiles": "public/processed-data.json"
     }
   },
   "rewrites": [
-    {
-      "source": "/api/data",
-      "destination": "/api/data.js"
-    },
-    {
-      "source": "/api/data/(.*)",
-      "destination": "/api/data.js"
-    },
     {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
