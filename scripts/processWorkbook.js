@@ -178,7 +178,7 @@ function parseForecast(wb, sheetName) {
 // Row: [mo, cd, cu, t, rf_r, tn, ct, cp]
 // SAME pipeline for both years
 // ─────────────────────────────────────────────────────────────────
-function parseActual(wb, sheetName, channelMap, ST) {
+function parseActual(wb, sheetName, channelMap, ST, classMap) {
   const sheet = wb.Sheets[sheetName];
   if (!sheet) { console.warn(`  ⚠  Sheet not found: "${sheetName}"`); return []; }
 
@@ -215,8 +215,11 @@ function parseActual(wb, sheetName, channelMap, ST) {
 
     raw_tn_after += tn_raw;
 
-    const code    = ss(r['Code']);
     const partner = ss(r['Invoice lines/Partner'] ?? r['Invoice Partner Display Name'] ?? r['Partner'] ?? '');
+    const tag     = ss(r['Tags'] ?? r['tags'] ?? r['Classification'] ?? r['Customer Category'] ?? '');
+    if (partner && tag) classMap[partner] = tag;
+
+    const code    = ss(r['Code']);
     const type    = ss(r['Invoice lines/Number Type']);
     const ref     = ss(r['Invoice lines/Reference']);
 
@@ -304,6 +307,7 @@ async function run() {
   const productMap  = {};   // code → product name
   const categoryMap = {};   // code → category name
   const channelMap  = {};   // customer name → channel name
+  const classMap    = {};   // customer name → classification
 
   const mainRows = XLSX.utils.sheet_to_json(wb.Sheets['Main Data'], { defval: '' });
   for (const r of mainRows) {
@@ -322,7 +326,16 @@ async function run() {
     for (const r of custRows) {
       const name = ss(r['Customers'] || r['Customer'] || r['Name'] || r['Partner'] || r['Display Name'] || r['Customer Name'] || r['Partner Name']);
       const ch   = ss(r['Channel']   || r['channel']  || r['Trade Channel'] || r['Sales Channel']);
-      if (name) channelMap[name] = ch || 'Other';
+      if (!name) continue;
+      const channel = ch || 'Other';
+      // Store original name
+      channelMap[name] = channel;
+      // Store normalized name (collapse multiple spaces → single space, trim)
+      const norm = name.replace(/\s+/g, ' ').trim();
+      if (norm !== name) channelMap[norm] = channel;
+      // Store code-based key: extract [CODE] prefix (e.g. [KR-000755]) for robust matching
+      const codeM = name.match(/^\[([^\]]+)\]/);
+      if (codeM) channelMap['__code__' + codeM[1]] = channel;
     }
   }
   console.log(`   channelMap  : ${Object.keys(channelMap).length} entries (customer → channel)`);
@@ -338,8 +351,8 @@ async function run() {
 
   // Step 6: Parse actuals (identical pipeline for both years)
   console.log('\n📋 Parsing actuals…');
-  const rows25 = parseActual(wb, sheetAct25, channelMap, ST);
-  const rows26 = parseActual(wb, sheetAct26, channelMap, ST);
+  const rows25 = parseActual(wb, sheetAct25, channelMap, ST, classMap);
+  const rows26 = parseActual(wb, sheetAct26, channelMap, ST, classMap);
 
   // Step 7: Validation
   const v25 = daxValidate(rows25, ST, 'Actual 25  (full year)');
@@ -359,6 +372,7 @@ async function run() {
     productMap,    // code → product name
     categoryMap,   // code → category name
     channelMap,    // customer name → channel name
+    classMap,      // customer name → classification
     fc25,
     fc26,
     rows25,

@@ -124,7 +124,18 @@ function buildLookups(pd) {
   for (let i = 0; i < strings.length; i++) {
     const s = strings[i];
     isRINV_arr[i] = s === 'RINV' ? 1 : 0;
-    ch_arr[i]     = channelMap[s]  || 'Other';
+    
+    let ch = channelMap[s];
+    if (!ch) {
+      const norm = s.replace(/\s+/g, ' ').trim();
+      ch = channelMap[norm];
+    }
+    if (!ch) {
+      const codeM = s.match(/^\[([^\]]+)\]/);
+      if (codeM) ch = channelMap['__code__' + codeM[1]];
+    }
+    ch_arr[i]     = ch || 'Other';
+    
     ca_arr[i]     = categoryMap[s] || 'Unknown';
   }
 
@@ -213,7 +224,7 @@ function hasCupsTarget(fc26, months) {
 // Build full API response
 // ─────────────────────────────────────────────────────────────────
 function buildResponse(pd, months, rawFilters) {
-  const { rows25, rows26, fc25, fc26, productMap, categoryMap, channelMap, strings } = pd;
+  const { rows25, rows26, fc25, fc26, productMap, categoryMap, channelMap, classMap, strings } = pd;
   const lookups  = buildLookups(pd);
   const monthSet = new Set(months);
 
@@ -290,12 +301,15 @@ function buildResponse(pd, months, rawFilters) {
     category_data.push({
       category: cat,
       ton:    { s25: r25.ton.s,    r25: r25.ton.r,    s26: r26.ton.s,    r26: r26.ton.r,
+                partial25: r25.ton.partial, partial26: r26.ton.partial,
                 tgt25: fcSumCat(fc25,cat,months,'ton',categoryMap),
                 tgt26: fcSumCat(fc26,cat,months,'ton',categoryMap) },
       carton: { s25: r25.carton.s, r25: r25.carton.r, s26: r26.carton.s, r26: r26.carton.r,
+                partial25: r25.carton.partial, partial26: r26.carton.partial,
                 tgt25: fcSumCat(fc25,cat,months,'carton',categoryMap),
                 tgt26: fcSumCat(fc26,cat,months,'carton',categoryMap) },
       cups:   { s25: r25.cups.s,   r25: r25.cups.r,   s26: r26.cups.s,   r26: r26.cups.r,
+                partial25: r25.cups.partial, partial26: r26.cups.partial,
                 tgt25: hasCups ? fcSumCat(fc25,cat,months,'cups',categoryMap) : null,
                 tgt26: hasCups ? fcSumCat(fc26,cat,months,'cups',categoryMap) : null },
     });
@@ -335,6 +349,7 @@ function buildResponse(pd, months, rawFilters) {
     customer_data.push({
       customer: cust,
       channel:  channelMap[cust] || 'Other',
+      classification: classMap ? (classMap[cust] || '–') : '–',
       in_25:    cuIds25.has(cuId),
       ton:    { s25: r25.ton.s,    r25: r25.ton.r,    s26: r26.ton.s,    r26: r26.ton.r    },
       carton: { s25: r25.carton.s, r25: r25.carton.r, s26: r26.carton.s, r26: r26.carton.r },

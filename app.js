@@ -215,15 +215,14 @@ async function fetchData(months) {
 // PAGE ROUTING
 // ═══════════════════════════════════════════════════════════════
 const PAGE_TITLES = {
-  home:      'YTD Greko Egypt Dashboard',
-  ytd:       'YTD Performance',
-  products:  'Product Analysis',
+  home:      'Executive Dashboard',
+  ytd:       'SKU YTD Performance',
+  products:  'Category Analysis',
   customers: 'Customer Analysis',
   channels:  'Channel Analysis',
   returns:   'Returns Analysis',
   growth:    'Growth Analysis',
-  monthly:   'Monthly Trend',
-  quarterly: 'Quarterly Dashboard',
+  monthly:   'Target Analysis'
 };
 
 function go(page) {
@@ -249,7 +248,6 @@ function renderPage() {
     case 'returns':   pgReturns(D);   break;
     case 'growth':    pgGrowth(D);    break;
     case 'monthly':   pgMonthly(D);   break;
-    case 'quarterly': pgQuarterly(D); break;
   }
   attachSort();
 }
@@ -515,6 +513,7 @@ function pgCustomers(D) {
             <th>#</th>
             ${thSort('Customer', 'name')}
             <th>Channel</th>
+            <th>Class</th>
             ${thSort('Sales 25', 's25')}
             ${thSort('Sales 26', 's26')}
             ${thSort('Growth', 'grow')}
@@ -529,6 +528,7 @@ function pgCustomers(D) {
               <td>${tier} ${i + 1}</td>
               <td>${trunc(c.customer, 28)}</td>
               <td><span class="badge badge-gray">${c.channel || '–'}</span></td>
+              <td>${c.classification || '–'}</td>
               <td class="num">${fmt(s25)}</td>
               <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
               <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
@@ -567,9 +567,10 @@ function pgCustomers(D) {
 function pgChannels(D) {
   const M    = STATE.measure;
   const tab  = STATE.chTab;
-  const chs  = sortData(D.channel_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0).map(c => ({ ...c, name: c.channel })));
+  const validChannels = ['KA', 'KR', 'Online', 'B2B', 'TT', 'DIS'];
+  const chs  = sortData(D.channel_data.filter(c => validChannels.includes(c.channel) && (c[M].s26 > 0 || c[M].s25 > 0)).map(c => ({ ...c, name: c.channel })));
   const filtCh = STATE.chFilter;
-  const chList = [...new Set(D.channel_data.map(c => c.channel).filter(Boolean))].sort();
+  const chList = validChannels;
 
   document.getElementById('page-channels').innerHTML = `
     <div class="channel-controls">
