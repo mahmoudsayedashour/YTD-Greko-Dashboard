@@ -41,6 +41,23 @@ const OUTPUT_PATH = path.join(__dirname, '..', 'data', 'processed-data.json');
 const MONTHS_FULL = ['January','February','March','April','May','June',
                      'July','August','September','October','November','December'];
 
+// Arabic month names as used in the Forecast sheets
+// Columns: "{ar} طن" for ton, "{ar} كراتين" for carton (keys may have trailing spaces — trim on lookup)
+const MONTHS_AR = [
+  'يناير',  // 1  January
+  'فبراير', // 2  February
+  'مارس',   // 3  March
+  'أبريل',  // 4  April
+  'مايو',   // 5  May
+  'يونيو',  // 6  June
+  'يوليو',  // 7  July
+  'أغسطس', // 8  August
+  'سبتمبر',// 9  September
+  'أكتوبر',// 10 October
+  'نوفمبر',// 11 November
+  'ديسمبر', // 12 December
+];
+
 // ─────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────
@@ -99,27 +116,60 @@ function downloadBuffer(url) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Forecast parser (unchanged)
+// Forecast parser — supports both English and Arabic column names
 // ─────────────────────────────────────────────────────────────────
 function parseForecast(wb, sheetName) {
   const sheet = wb.Sheets[sheetName];
   if (!sheet) { console.warn(`  ⚠  Sheet not found: "${sheetName}"`); return {}; }
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: 0 });
+  if (rows.length === 0) return {};
+
+  // Build a trimmed-key lookup to handle trailing/leading spaces in Arabic headers
   const map  = {};
+  let sample_nonzero = 0;
+
   for (const r of rows) {
     const code = ss(r['Code'] || r['code']);
     if (!code) continue;
+    // Build a key→value map with trimmed keys to handle whitespace in Arabic headers
+    const trimmed = {};
+    for (const [k, v] of Object.entries(r)) trimmed[k.trim()] = v;
+
     map[code] = {};
     for (let m = 1; m <= 12; m++) {
-      const mn = MONTHS_FULL[m - 1];
-      map[code][m] = {
-        ton:    sf(r[`${mn} Ton`]     ?? r[`${mn}Ton`]     ?? 0),
-        carton: sf(r[`${mn} Cartons`] ?? r[`${mn}Cartons`] ?? r[`${mn} Carton`] ?? 0),
-        cups:   sf(r[`${mn} Cups`]    ?? r[`${mn}Cups`]    ?? 0),
-      };
+      const enName = MONTHS_FULL[m - 1];  // English: 'January'
+      const arName = MONTHS_AR[m - 1];    // Arabic:  'يناير'
+
+      // Ton: try Arabic first, then English fallbacks
+      const ton = sf(
+        trimmed[arName + ' طن'] ??
+        trimmed['طن ' + arName] ??
+        trimmed[enName + ' Ton'] ??
+        trimmed[enName + 'Ton'] ??
+        0
+      );
+      // Carton: try Arabic first, then English fallbacks
+      const carton = sf(
+        trimmed[arName + ' كراتين'] ??
+        trimmed[enName + ' Cartons'] ??
+        trimmed[enName + 'Cartons'] ??
+        trimmed[enName + ' Carton'] ??
+        0
+      );
+      // Cups: English only (not present in Arabic sheets)
+      const cups = sf(
+        trimmed[enName + ' Cups'] ??
+        trimmed[enName + 'Cups'] ??
+        0
+      );
+
+      map[code][m] = { ton, carton, cups };
+      if (ton > 0 || carton > 0) sample_nonzero++;
     }
   }
-  console.log(`  ✓  ${sheetName}: ${Object.keys(map).length} product codes`);
+  const totalNonZero = Object.values(map).reduce((s, months) =>
+    s + Object.values(months).filter(v => v.ton > 0 || v.carton > 0).length, 0);
+  console.log(`  ✓  ${sheetName}: ${Object.keys(map).length} product codes, ${totalNonZero} non-zero month entries`);
   return map;
 }
 
@@ -259,8 +309,10 @@ async function run() {
   for (const r of mainRows) {
     const code = ss(r['Code'] || r['code'] || r['Product Code']);
     if (!code) continue;
-    productMap[code]  = ss(r['Product']  || r['product']  || r['Product Name'] || code);
-    categoryMap[code] = ss(r['Category'] || r['category'] || r['Categories']   || 'Unknown');
+    // Column 'Invoice lines/Product' is the actual product name column in this workbook
+    productMap[code]  = ss(r['Invoice lines/Product'] || r['Product']  || r['product']  || r['Product Name'] || code);
+    // Column 'Product Category' is the actual category column in this workbook
+    categoryMap[code] = ss(r['Product Category'] || r['Category'] || r['category'] || r['Categories'] || 'Unknown');
   }
   console.log(`   productMap  : ${Object.keys(productMap).length} entries`);
 
