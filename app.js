@@ -218,7 +218,7 @@ async function fetchData(months) {
 // PAGE ROUTING
 // ═══════════════════════════════════════════════════════════════
 const PAGE_TITLES = {
-  home:      'Executive Dashboard',
+  home:      'YTD Sales Overview',
   ytd:       'SKU YTD Performance',
   products:  'Category Analysis',
   customers: 'Customer Analysis',
@@ -275,21 +275,15 @@ function pgHome(D) {
                                     .sort((a, b) => b[M].s26 - a[M].s26);
 
   document.getElementById('page-home').innerHTML = `
-    <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
       ${kpi('💰', `Sales 2026`, fmt(mm.s26), null, 'cyan', `Target: ${hasTgt(mm.tgt26) ? fmt(mm.tgt26) : 'N/A'}`)}
       ${kpi('📅', `Sales 2025`, fmt(mm.s25), null, 'blue', `Target: ${hasTgt(mm.tgt25) ? fmt(mm.tgt25) : 'N/A'}`)}
+      ${kpi('🎯', 'Achievement 26 %', a26 != null ? a26.toFixed(1) + '%' : 'N/A', a26 != null ? a26 - 100 : null, 'cyan', `2025: ${a25 != null ? a25.toFixed(1) + '%' : 'N/A'}`)}
       ${kpi('📈', 'Growth %', fmtP(g), g, 'green', `Δ ${fmt(variance)}`)}
-      ${kpi('🎯', 'Achievement 26', a26 != null ? a26.toFixed(1) + '%' : 'N/A', a26 != null ? a26 - 100 : null, 'cyan', `2025: ${a25 != null ? a25.toFixed(1) + '%' : 'N/A'}`)}
-      ${kpi('↩️', 'Returns 26', fmt(mm.r26), null, 'red', `2025: ${fmt(mm.r25)}`)}
+      ${kpi('↩️', 'Return 26', fmt(mm.r26), null, 'red', `2025: ${fmt(mm.r25)}`)}
       ${kpi('📉', 'Return Rate 26', rp26.toFixed(1) + '%', -(rp26 - rp25), 'red', `Was: ${rp25.toFixed(1)}%`)}
-    </div>
-
-    <!-- Year Comparison KPIs -->
-    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-top:16px">
-      ${kpi('⚖️', 'Sales Variance', fmt(variance), g, 'cyan', '2026 vs 2025')}
-      ${kpi('👥', 'Customers 26', m.customers_26.toString(), m.customers_26 - m.customers_25, 'blue', `Was: ${m.customers_25}`)}
       ${kpi('🔄', 'Partial Returns 26', fmt(mm.partial26), null, 'gold', `2025: ${fmt(mm.partial25)}`)}
-      ${kpi('↩️', 'Return Δ', fmt(retVariance), retVariance <= 0 ? 10 : -10, 'red', '2026 - 2025')}
+      ${kpi('👥', 'Customers 25 VS 26', m.customers_26.toString(), m.customers_26 - m.customers_25, 'blue', `2025: ${m.customers_25}`)}
     </div>
 
     <div class="chart-grid cols-2" style="margin-top:20px">
