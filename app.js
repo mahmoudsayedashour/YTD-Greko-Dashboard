@@ -708,26 +708,26 @@ function pgChannels(D) {
                   const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
                   const rp25 = retP(s25, r25);
                   const rp26 = retP(s26, r26);
-                  return \`<tr>
-                    <td style="text-align:center">\${i + 1}</td>
-                    <td style="text-align:left"><strong>\${c.product}</strong><br><span style="font-size:10px;opacity:0.6">\${c.code}</span></td>
-                    <td style="text-align:left"><span class="badge" style="background:\${catColor(c.category)}">\${c.category}</span></td>
-                    <td class="num">\${fmt(s25)}</td>
-                    <td class="num">\${rp25.toFixed(1)}%</td>
-                    <td class="num">\${hasTgt(t26) ? fmt(t26) : '–'}</td>
-                    <td class="num" style="color:\${C.cyan}">\${fmt(s26)}</td>
-                    <td class="num" style="color:\${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">\${rp26.toFixed(1)}%</td>
-                    <td class="num">\${achBadge(a)}</td>
-                    <td class="num">\${fmt(gAbs)}</td>
-                    <td class="num">\${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
-                  </tr>\`;
+                  return `<tr>
+                    <td style="text-align:center">${i + 1}</td>
+                    <td style="text-align:left"><strong>${c.product}</strong><br><span style="font-size:10px;opacity:0.6">${c.code}</span></td>
+                    <td style="text-align:left"><span class="badge" style="background:${catColor(c.category)}">${c.category}</span></td>
+                    <td class="num">${fmt(s25)}</td>
+                    <td class="num">${rp25.toFixed(1)}%</td>
+                    <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
+                    <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+                    <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
+                    <td class="num">${achBadge(a)}</td>
+                    <td class="num">${fmt(gAbs)}</td>
+                    <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+                  </tr>`;
                 }).join('')}</tbody>
               </table>
             </div>
           `;
         })
         .catch(err => {
-          document.getElementById('ch-sku-details').innerHTML = `<div class="chart-card" style="margin-top:20px; text-align:center; padding:20px; color:${C.red}">Error loading SKU details: \${err.message}</div>`;
+          document.getElementById('ch-sku-details').innerHTML = `<div class="chart-card" style="margin-top:20px; text-align:center; padding:20px; color:${C.red}">Error loading SKU details: ${err.message}</div>`;
           console.error(err);
         });
     }
