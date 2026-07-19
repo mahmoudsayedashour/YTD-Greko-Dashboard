@@ -159,7 +159,10 @@ function sortData(arr) {
       case 's26':  va = a[m].s26;  vb = b[m].s26;  break;
       case 'r26':  va = a[m].r26;  vb = b[m].r26;  break;
       case 'grow': va = grow(a[m].s26, a[m].s25); vb = grow(b[m].s26, b[m].s25); break;
+      case 'gAbs': va = (a[m].s26 || 0) - (a[m].s25 || 0); vb = (b[m].s26 || 0) - (b[m].s25 || 0); break;
       case 'retP': va = retP(a[m].s26, a[m].r26); vb = retP(b[m].s26, b[m].r26); break;
+      case 'retP25': va = retP(a[m].s25, a[m].r25); vb = retP(b[m].s25, b[m].r25); break;
+      case 'tgt26': va = a[m].tgt26 ?? 0; vb = b[m].tgt26 ?? 0; break;
       case 'ach26':va = hasTgt(a[m].tgt26) ? ach(a[m].s26, a[m].tgt26) : -1;
                    vb = hasTgt(b[m].tgt26) ? ach(b[m].s26, b[m].tgt26) : -1; break;
       default:     va = a[m]?.[currentSort.field] ?? 0; vb = b[m]?.[currentSort.field] ?? 0;
@@ -221,8 +224,7 @@ const PAGE_TITLES = {
   customers: 'Customer Analysis',
   channels:  'Channel Analysis',
   returns:   'Returns Analysis',
-  growth:    'Growth Analysis',
-  monthly:   'Target Analysis'
+  growth:    'Growth Analysis'
 };
 
 function go(page) {
@@ -247,7 +249,6 @@ function renderPage() {
     case 'channels':  pgChannels(D);  break;
     case 'returns':   pgReturns(D);   break;
     case 'growth':    pgGrowth(D);    break;
-    case 'monthly':   pgMonthly(D);   break;
   }
   attachSort();
 }
@@ -377,31 +378,35 @@ function pgYTD(D) {
         <table class="data-table">
           <thead><tr>
             <th>#</th>
-            ${thSort('Product', 'name')}
-            <th>Category</th>
+            ${thSort('SKU', 'name')}
             ${thSort('Sales 25', 's25')}
-            ${thSort('Sales 26', 's26')}
-            ${thSort('Growth', 'grow')}
+            ${thSort('Return 25 %', 'retP25')}
             ${thSort('Target 26', 'tgt26')}
-            ${thSort('Ach%', 'ach26')}
-            ${thSort('Ret% 26', 'retP')}
+            ${thSort('Sales 26', 's26')}
+            ${thSort('Return 26 %', 'retP')}
+            ${thSort('Ach %', 'ach26')}
+            ${thSort('Growth Ton', 'gAbs')}
+            ${thSort('Growth %', 'grow')}
           </tr></thead>
           <tbody>
             ${items.filter(p => p[M].s25 > 0 || p[M].s26 > 0).map((p, i) => {
-              const s25 = p[M].s25, s26 = p[M].s26, t26 = p[M].tgt26, r26 = p[M].r26;
+              const s25 = p[M].s25, s26 = p[M].s26, t26 = p[M].tgt26, r25 = p[M].r25, r26 = p[M].r26;
+              const gAbs = s26 - s25;
               const g = grow(s26, s25);
               const a = hasTgt(t26) ? ach(s26, t26) : null;
-              const r = retP(s26, r26);
+              const rp25 = retP(s25, r25);
+              const rp26 = retP(s26, r26);
               return `<tr>
                 <td>${i + 1}</td>
                 <td>${p.product}</td>
-                <td style="color:${catColor(p.category)}">${p.category}</td>
                 <td class="num">${fmt(s25)}</td>
-                <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
-                <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+                <td class="num">${rp25.toFixed(1)}%</td>
                 <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
+                <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+                <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
                 <td class="num">${achBadge(a)}</td>
-                <td class="num" style="color:${r > 10 ? C.red : r > 5 ? C.gold : C.green}">${r.toFixed(1)}%</td>
+                <td class="num">${fmt(gAbs)}</td>
+                <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
               </tr>`;
             }).join('')}
           </tbody>
@@ -433,26 +438,35 @@ function pgProducts(D) {
       <div class="chart-header"><div class="chart-title">📋 Category Summary</div></div>
       <table class="data-table">
         <thead><tr>
+          <th>#</th>
           ${thSort('Category', 'name')}
           ${thSort('Sales 25', 's25')}
-          ${thSort('Sales 26', 's26')}
-          ${thSort('Growth', 'grow')}
+          ${thSort('Return 25 %', 'retP25')}
           ${thSort('Target 26', 'tgt26')}
-          ${thSort('Achievement', 'ach26')}
-          ${thSort('Return 26', 'r26')}
+          ${thSort('Sales 26', 's26')}
+          ${thSort('Return 26 %', 'retP')}
+          ${thSort('Ach %', 'ach26')}
+          ${thSort('Growth Ton', 'gAbs')}
+          ${thSort('Growth %', 'grow')}
         </tr></thead>
-        <tbody>${sortData(D.category_data.map(c => ({ ...c, name: c.category }))).map(c => {
-          const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r26 = c[M].r26;
+        <tbody>${sortData(D.category_data.map(c => ({ ...c, name: c.category }))).map((c, i) => {
+          const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r25 = c[M].r25, r26 = c[M].r26;
+          const gAbs = s26 - s25;
           const g = grow(s26, s25);
           const a = hasTgt(t26) ? ach(s26, t26) : null;
+          const rp25 = retP(s25, r25);
+          const rp26 = retP(s26, r26);
           return `<tr>
+            <td>${i + 1}</td>
             <td style="color:${catColor(c.category)}"><strong>${c.category}</strong></td>
             <td class="num">${fmt(s25)}</td>
-            <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
-            <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+            <td class="num">${rp25.toFixed(1)}%</td>
             <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
+            <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+            <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
             <td class="num">${achBadge(a)}</td>
-            <td class="num" style="color:${C.red}">${fmt(r26)}</td>
+            <td class="num">${fmt(gAbs)}</td>
+            <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
           </tr>`;
         }).join('')}</tbody>
       </table>
@@ -512,28 +526,33 @@ function pgCustomers(D) {
           <thead><tr>
             <th>#</th>
             ${thSort('Customer', 'name')}
-            <th>Channel</th>
-            <th>Class</th>
             ${thSort('Sales 25', 's25')}
+            ${thSort('Return 25 %', 'retP25')}
+            ${thSort('Target 26', 'tgt26')}
             ${thSort('Sales 26', 's26')}
-            ${thSort('Growth', 'grow')}
-            ${thSort('Return 26', 'r26')}
-            ${thSort('Ret%', 'retP')}
+            ${thSort('Return 26 %', 'retP')}
+            ${thSort('Ach %', 'ach26')}
+            ${thSort('Growth Ton', 'gAbs')}
+            ${thSort('Growth %', 'grow')}
           </tr></thead>
           <tbody>${sortData(cs.map(c => ({ ...c, name: c.customer }))).map((c, i) => {
-            const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
-            const g = grow(s26, s25), rp = retP(s26, r26);
+            const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r25 = c[M].r25, r26 = c[M].r26;
+            const gAbs = s26 - s25;
+            const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
+            const rp25 = retP(s25, r25);
+            const rp26 = retP(s26, r26);
             const tier = i < 10 ? '🥇' : i < 10 + silver.length ? '🥈' : '🥉';
             return `<tr>
               <td>${tier} ${i + 1}</td>
               <td>${trunc(c.customer, 28)}</td>
-              <td><span class="badge badge-gray">${c.channel || '–'}</span></td>
-              <td>${c.classification || '–'}</td>
               <td class="num">${fmt(s25)}</td>
+              <td class="num">${rp25.toFixed(1)}%</td>
+              <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
               <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+              <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
+              <td class="num">${achBadge(a)}</td>
+              <td class="num">${fmt(gAbs)}</td>
               <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
-              <td class="num" style="color:${C.red}">${fmt(r26)}</td>
-              <td class="num" style="color:${rp > 10 ? C.red : rp > 5 ? C.gold : C.green}">${rp.toFixed(1)}%</td>
             </tr>`;
           }).join('')}</tbody>
         </table>
@@ -613,25 +632,34 @@ function pgChannels(D) {
         <div class="chart-header"><div class="chart-title">📋 Channel Sales Table</div></div>
         <table class="data-table">
           <thead><tr>
-            <th>Channel</th>
-            <th class="num">Sales 25</th>
-            <th class="num">Sales 26</th>
-            <th class="num">Growth</th>
-            <th class="num">Return 25</th>
-            <th class="num">Return 26</th>
-            <th class="num">Ret% 26</th>
+            <th>#</th>
+            ${thSort('Channel', 'name')}
+            ${thSort('Sales 25', 's25')}
+            ${thSort('Return 25 %', 'retP25')}
+            ${thSort('Target 26', 'tgt26')}
+            ${thSort('Sales 26', 's26')}
+            ${thSort('Return 26 %', 'retP')}
+            ${thSort('Ach %', 'ach26')}
+            ${thSort('Growth Ton', 'gAbs')}
+            ${thSort('Growth %', 'grow')}
           </tr></thead>
-          <tbody>${view.map(c => {
-            const s25 = c[M].s25, s26 = c[M].s26, r25 = c[M].r25, r26 = c[M].r26;
-            const g = grow(s26, s25), rp = retP(s26, r26);
+          <tbody>${sortData(view.map(c => ({ ...c, name: c.channel }))).map((c, i) => {
+            const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r25 = c[M].r25, r26 = c[M].r26;
+            const gAbs = s26 - s25;
+            const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
+            const rp25 = retP(s25, r25);
+            const rp26 = retP(s26, r26);
             return `<tr>
+              <td>${i + 1}</td>
               <td><strong>${c.channel}</strong></td>
               <td class="num">${fmt(s25)}</td>
+              <td class="num">${rp25.toFixed(1)}%</td>
+              <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
               <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+              <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
+              <td class="num">${achBadge(a)}</td>
+              <td class="num">${fmt(gAbs)}</td>
               <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
-              <td class="num">${fmt(r25)}</td>
-              <td class="num" style="color:${C.red}">${fmt(r26)}</td>
-              <td class="num" style="color:${rp > 10 ? C.red : rp > 5 ? C.gold : C.green}">${rp.toFixed(1)}%</td>
             </tr>`;
           }).join('')}</tbody>
         </table>
