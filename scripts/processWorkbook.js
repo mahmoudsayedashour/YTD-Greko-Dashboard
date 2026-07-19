@@ -215,7 +215,7 @@ function parseActual(wb, sheetName, channelMap, ST, classMap) {
 
     raw_tn_after += tn_raw;
 
-    const partner = ss(r['Invoice lines/Partner'] ?? r['Invoice Partner Display Name'] ?? r['Partner'] ?? '');
+    const partner = ss(r['Invoice Partner Display Name.1'] ?? r['Invoice lines/Partner'] ?? r['Invoice Partner Display Name'] ?? r['Partner'] ?? '');
     const tag     = ss(r['Tags'] ?? r['tags'] ?? r['Classification'] ?? r['Customer Category'] ?? '');
     if (partner && tag) classMap[partner] = tag;
 
