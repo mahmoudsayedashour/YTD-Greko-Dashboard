@@ -658,6 +658,7 @@ function pgChannels(D) {
           }).join('')}</tbody>
         </table>
       </div>
+      <div id="ch-sku-details"></div>
     `;
     setTimeout(() => {
       mkChart('ch-ch-bars', { type: 'bar',
@@ -676,6 +677,60 @@ function pgChannels(D) {
         options: barOpts(),
       });
     }, 50);
+
+    if (filtCh) {
+      document.getElementById('ch-sku-details').innerHTML = `<div class="chart-card" style="margin-top:20px; text-align:center; padding:40px; color:${C.gray}">Loading SKU details for ${filtCh}...</div>`;
+      fetch(`/api/data?months=${STATE.months.join(',')}&channel=${encodeURIComponent(filtCh)}`)
+        .then(res => res.json())
+        .then(data => {
+          const skuView = data.product_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0);
+          skuView.sort((a,b) => b[M].s26 - a[M].s26);
+          document.getElementById('ch-sku-details').innerHTML = `
+            <div class="chart-card" style="margin-top:20px">
+              <div class="chart-header"><div class="chart-title">📦 SKU Sales Table - ${filtCh}</div></div>
+              <table class="data-table">
+                <thead><tr>
+                  <th style="text-align:center">#</th>
+                  <th style="text-align:left">SKU</th>
+                  <th style="text-align:left">Category</th>
+                  <th style="text-align:right">Sales 25</th>
+                  <th style="text-align:right">Return 25 %</th>
+                  <th style="text-align:right">Target 26</th>
+                  <th style="text-align:right">Sales 26</th>
+                  <th style="text-align:right">Return 26 %</th>
+                  <th style="text-align:center">Achievement 26 %</th>
+                  <th style="text-align:right">Growth Ton</th>
+                  <th style="text-align:center">Growth %</th>
+                </tr></thead>
+                <tbody>${skuView.map((c, i) => {
+                  const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r25 = c[M].r25, r26 = c[M].r26;
+                  const gAbs = s26 - s25;
+                  const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
+                  const rp25 = retP(s25, r25);
+                  const rp26 = retP(s26, r26);
+                  return \`<tr>
+                    <td style="text-align:center">\${i + 1}</td>
+                    <td style="text-align:left"><strong>\${c.product}</strong><br><span style="font-size:10px;opacity:0.6">\${c.code}</span></td>
+                    <td style="text-align:left"><span class="badge" style="background:\${catColor(c.category)}">\${c.category}</span></td>
+                    <td class="num">\${fmt(s25)}</td>
+                    <td class="num">\${rp25.toFixed(1)}%</td>
+                    <td class="num">\${hasTgt(t26) ? fmt(t26) : '–'}</td>
+                    <td class="num" style="color:\${C.cyan}">\${fmt(s26)}</td>
+                    <td class="num" style="color:\${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">\${rp26.toFixed(1)}%</td>
+                    <td class="num">\${achBadge(a)}</td>
+                    <td class="num">\${fmt(gAbs)}</td>
+                    <td class="num">\${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+                  </tr>\`;
+                }).join('')}</tbody>
+              </table>
+            </div>
+          `;
+        })
+        .catch(err => {
+          document.getElementById('ch-sku-details').innerHTML = `<div class="chart-card" style="margin-top:20px; text-align:center; padding:20px; color:${C.red}">Error loading SKU details: \${err.message}</div>`;
+          console.error(err);
+        });
+    }
 
   } else if (tab === 'returns') {
     document.getElementById('ch-tab-content').innerHTML = `
