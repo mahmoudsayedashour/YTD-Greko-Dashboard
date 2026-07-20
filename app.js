@@ -977,15 +977,16 @@ function pgCustomers(D) {
             ${thSort('Growth %', 'grow')}
           </tr></thead>
           <tbody>${sortData(cs.map(c => ({ ...c, name: c.customer }))).map((c, i) => {
+            const rowId = `row-cust-${i}`;
             const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r25 = c[M].r25, r26 = c[M].r26;
             const gAbs = s26 - s25;
             const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
             const rp25 = retP(s25, r25);
             const rp26 = retP(s26, r26);
             const tier = i < 10 ? '🥇' : i < 10 + silver.length ? '🥈' : '🥉';
-            return `<tr>
-              <td>${tier} ${i + 1}</td>
-              <td>${trunc(c.customer, 28)}</td>
+            return `<tr id="${rowId}" class="row-clickable" onclick="toggleCustomerRow('${rowId}', '${c.customer}')">
+              <td><span class="expand-icon">▶</span> ${tier} ${i + 1}</td>
+              <td><strong>${trunc(c.customer, 28)}</strong></td>
               <td class="num">${fmt(s25)}</td>
               <td class="num">${rp25.toFixed(1)}%</td>
               <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
