@@ -239,6 +239,285 @@ async function fetchData(months) {
   return data;
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// DRILL-DOWN LOGIC & CACHING
+// ═══════════════════════════════════════════════════════════════
+const API_CACHE = {};
+
+async function fetchDrilldownData(params) {
+  const qs = new URLSearchParams({ months: STATE.months.join(','), ...params }).toString();
+  const url = `/api/data?${qs}`;
+  if (API_CACHE[url]) return API_CACHE[url];
+  
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`API Error ${res.status}`);
+  const data = await res.json();
+  if (data.success === false) throw new Error(data.message);
+  
+  if (data.customer_data) {
+    data.customer_data.forEach(c => {
+      if (c.customer) c.customer = c.customer.replace(/^\[.*?\]\s*/, '').trim();
+    });
+  }
+  API_CACHE[url] = data;
+  return data;
+}
+
+let openRows = {}; // track by level 'L1', 'L2'
+
+async function toggleRowLevel(rowId, level, colSpan, renderPromise) {
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  const isExpanded = row.classList.contains('expanded');
+  
+  // Close previously open row at this level
+  if (openRows[level] && openRows[level] !== rowId) {
+    const oldRow = document.getElementById(openRows[level]);
+    if (oldRow) {
+      oldRow.classList.remove('expanded');
+      const oldNested = oldRow.nextElementSibling;
+      if (oldNested && oldNested.classList.contains('nested-row')) {
+        const content = oldNested.querySelector('.nested-content');
+        if (content) content.classList.remove('open');
+        setTimeout(() => oldNested.remove(), 400);
+      }
+    }
+  }
+
+  if (isExpanded) {
+    // Collapse
+    row.classList.remove('expanded');
+    const nested = row.nextElementSibling;
+    if (nested && nested.classList.contains('nested-row')) {
+      const content = nested.querySelector('.nested-content');
+      if (content) content.classList.remove('open');
+      setTimeout(() => nested.remove(), 400);
+    }
+    openRows[level] = null;
+  } else {
+    // Expand
+    row.classList.add('expanded');
+    openRows[level] = rowId;
+    
+    const nestedRow = document.createElement('tr');
+    nestedRow.className = 'nested-row';
+    nestedRow.innerHTML = `
+      <td colspan="${colSpan}" class="nested-td">
+        <div class="nested-content" id="content-${rowId}">
+          <div class="nested-card">
+            <div style="text-align:center; padding: 20px; color: var(--text-muted);">
+              <div class="spinner" style="margin: 0 auto 10px; border: 2px solid rgba(255,255,255,0.1); border-top-color: var(--accent-cyan); border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite;"></div>
+              Loading...
+            </div>
+          </div>
+        </div>
+      </td>
+    `;
+    row.insertAdjacentElement('afterend', nestedRow);
+    const content = document.getElementById(`content-${rowId}`);
+    // Force reflow and start CSS transition
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (content) content.classList.add('open');
+    }));
+
+    try {
+      const html = await renderPromise();
+      if (openRows[level] === rowId && content) {
+        content.innerHTML = html;
+        // Adjust max-height after content is loaded just in case
+        content.style.maxHeight = '2000px'; 
+      }
+    } catch(e) {
+      if (openRows[level] === rowId && content) {
+        content.innerHTML = `<div class="nested-card" style="color:var(--accent-red); text-align:center;">Error: ${e.message}</div>`;
+      }
+    }
+  }
+}
+
+function renderSummaryCard(title, kpis) {
+  return `
+    <div class="summary-card">
+      <div class="summary-title">${title}</div>
+      ${kpis.map(k => `
+        <div class="summary-item">
+          <span class="summary-label">${k.label}</span>
+          <span class="summary-value" style="color: ${k.color || '#fff'}">${k.value}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderNestedProductTable(dataArray, title) {
+  const M = STATE.measure;
+  // sortData will sort the provided array.
+  // We need to copy it so it doesn't mutate global if it's local data
+  const items = sortData([...dataArray].map(p => ({ ...p, name: p.product })));
+  const validItems = items.filter(p => p[M].s26 > 0 || p[M].s25 > 0);
+  
+  if (validItems.length === 0) {
+     return `<div class="nested-card" style="text-align:center; padding:20px; color:var(--text-muted)">No products found for this selection.</div>`;
+  }
+  
+  return `
+    <div class="nested-card" style="margin:0; box-shadow:none; border:none; padding:0;">
+        <div class="chart-header" style="margin-bottom: 12px; padding:0;">
+          <div class="chart-title" style="font-size:12px; opacity:0.8;">📋 ${title}</div>
+        </div>
+        <div class="data-table-wrapper" style="max-height:400px;overflow-y:auto; border-radius: 8px;">
+          <table class="data-table" style="margin:0;">
+            <thead style="position:sticky; top:0; z-index:2; background:var(--bg-card);"><tr>
+              <th>#</th>
+              <th style="text-align:left">SKU</th>
+              <th style="text-align:left">Category</th>
+              <th class="num">Sales 25</th>
+              <th class="num">Return 25 %</th>
+              <th class="num">Target 26</th>
+              <th class="num">Sales 26</th>
+              <th class="num">Return 26 %</th>
+              <th class="num">Ach %</th>
+              <th class="num">Growth Ton</th>
+              <th class="num">Growth %</th>
+            </tr></thead>
+            <tbody>
+              ${validItems.map((p, i) => {
+                const s25 = p[M].s25, s26 = p[M].s26, t26 = p[M].tgt26, r25 = p[M].r25, r26 = p[M].r26;
+                const gAbs = s26 - s25;
+                const g = grow(s26, s25);
+                const a = hasTgt(t26) ? ach(s26, t26) : null;
+                const rp25 = retP(s25, r25);
+                const rp26 = retP(s26, r26);
+                return `<tr>
+                  <td>${i + 1}</td>
+                  <td style="text-align:left">${p.product}</td>
+                  <td style="text-align:left; color:${catColor(p.category)}">${p.category}</td>
+                  <td class="num">${fmt(s25)}</td>
+                  <td class="num">${rp25.toFixed(1)}%</td>
+                  <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
+                  <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+                  <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
+                  <td class="num">${achBadge(a)}</td>
+                  <td class="num">${fmt(gAbs)}</td>
+                  <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+    </div>
+  `;
+}
+
+window.toggleCustomerRow = (rowId, customerName) => {
+  toggleRowLevel(rowId, 'L1', 11, async () => {
+    const data = await fetchDrilldownData({ customer: customerName });
+    const M = STATE.measure;
+    const custRow = data.customer_data.find(c => c.customer === customerName);
+    const s26 = custRow ? custRow[M].s26 : 0;
+    const g = custRow ? grow(custRow[M].s26, custRow[M].s25) : 0;
+    const a = custRow && hasTgt(custRow[M].tgt26) ? ach(custRow[M].s26, custRow[M].tgt26) : null;
+    const skuCount = data.product_data.filter(p => p[M].s26 > 0 || p[M].s25 > 0).length;
+
+    const summaryHtml = renderSummaryCard(customerName, [
+      { label: 'Products', value: skuCount },
+      { label: 'Sales 26', value: fmt(s26), color: C.cyan },
+      { label: 'Growth %', value: fmtP(g), color: g >= 0 ? C.green : C.red },
+      { label: 'Ach %', value: a != null ? a.toFixed(1) + '%' : 'N/A', color: a != null && a >= 100 ? C.green : C.gold }
+    ]);
+
+    const tableHtml = renderNestedProductTable(data.product_data, 'Customer Product Matrix');
+    return `<div class="nested-card">${summaryHtml}${tableHtml}</div>`;
+  });
+};
+
+window.toggleCategoryRow = (rowId, categoryName, channelName = null) => {
+  // If we are in channel drilldown, use L2, otherwise L1
+  const level = channelName ? 'L2' : 'L1';
+  toggleRowLevel(rowId, level, 11, async () => {
+    let sourceData = STATE.data;
+    if (channelName) {
+       sourceData = await fetchDrilldownData({ channel: channelName });
+    }
+    const M = STATE.measure;
+    const catRow = sourceData.category_data.find(c => c.category === categoryName);
+    const s26 = catRow ? catRow[M].s26 : 0;
+    const g = catRow ? grow(catRow[M].s26, catRow[M].s25) : 0;
+    const rp26 = catRow ? retP(catRow[M].s26, catRow[M].r26) : 0;
+    
+    const catSkus = sourceData.product_data.filter(p => p.category === categoryName && (p[M].s26 > 0 || p[M].s25 > 0));
+
+    const summaryHtml = renderSummaryCard(categoryName + (channelName ? ` (${channelName})` : ''), [
+      { label: 'SKUs', value: catSkus.length },
+      { label: 'Sales 26', value: fmt(s26), color: C.cyan },
+      { label: 'Growth %', value: fmtP(g), color: g >= 0 ? C.green : C.red },
+      { label: 'Return %', value: rp26 != null ? rp26.toFixed(1) + '%' : 'N/A', color: rp26 > 10 ? C.red : (rp26 > 5 ? C.gold : C.green) }
+    ]);
+
+    const tableHtml = renderNestedProductTable(catSkus, 'Category Product Matrix');
+    return `<div class="nested-card">${summaryHtml}${tableHtml}</div>`;
+  });
+};
+
+window.toggleChannelRow = (rowId, channelName) => {
+  toggleRowLevel(rowId, 'L1', 11, async () => {
+    const data = await fetchDrilldownData({ channel: channelName });
+    const M = STATE.measure;
+    
+    const catView = data.category_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0);
+    catView.sort((a,b) => b[M].s26 - a[M].s26);
+    
+    // Render Category Table for this Channel
+    const tableHtml = `
+      <div class="nested-card" style="margin:0; box-shadow:none; border:none; padding:0;">
+        <div class="chart-header" style="margin-bottom: 12px; padding:0;">
+          <div class="chart-title" style="font-size:12px; opacity:0.8;">📋 Category Summary – ${channelName}</div>
+        </div>
+        <div class="data-table-wrapper" style="max-height:400px;overflow-y:auto; border-radius: 8px;">
+          <table class="data-table" style="margin:0;">
+            <thead style="position:sticky; top:0; z-index:2; background:var(--bg-card);"><tr>
+              <th>#</th>
+              <th style="text-align:left">Category</th>
+              <th class="num">Sales 25</th>
+              <th class="num">Return 25 %</th>
+              <th class="num">Target 26</th>
+              <th class="num">Sales 26</th>
+              <th class="num">Return 26 %</th>
+              <th class="num">Ach %</th>
+              <th class="num">Growth Ton</th>
+              <th class="num">Growth %</th>
+            </tr></thead>
+            <tbody>${catView.map((c, i) => {
+              const catId = `nested-cat-${channelName.replace(/\s/g,'')}-${i}`;
+              const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r25 = c[M].r25, r26 = c[M].r26;
+              const gAbs = s26 - s25;
+              const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
+              const rp25 = retP(s25, r25);
+              const rp26 = retP(s26, r26);
+              // Use L2 toggle
+              return `<tr id="${catId}" class="row-clickable" onclick="toggleCategoryRow('${catId}', '${c.category}', '${channelName}')">
+                <td><span class="expand-icon">▶</span> ${i + 1}</td>
+                <td style="text-align:left; color:${catColor(c.category)}; font-weight:bold;">${c.category}</td>
+                <td class="num">${fmt(s25)}</td>
+                <td class="num">${rp25.toFixed(1)}%</td>
+                <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
+                <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+                <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
+                <td class="num">${achBadge(a)}</td>
+                <td class="num">${fmt(gAbs)}</td>
+                <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    
+    return `<div class="nested-card">${tableHtml}</div>`;
+  });
+};
+
 // ═══════════════════════════════════════════════════════════════
 // PAGE ROUTING
 // ═══════════════════════════════════════════════════════════════
@@ -545,14 +824,15 @@ function pgProducts(D) {
           ${thSort('Growth %', 'grow')}
         </tr></thead>
         <tbody>${sortData(D.category_data.map(c => ({ ...c, name: c.category }))).map((c, i) => {
+          const rowId = `row-cat-${i}`;
           const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r25 = c[M].r25, r26 = c[M].r26;
           const gAbs = s26 - s25;
           const g = grow(s26, s25);
           const a = hasTgt(t26) ? ach(s26, t26) : null;
           const rp25 = retP(s25, r25);
           const rp26 = retP(s26, r26);
-          return `<tr>
-            <td>${i + 1}</td>
+          return `<tr id="${rowId}" class="row-clickable" onclick="toggleCategoryRow('${rowId}', '${c.category}')">
+            <td><span class="expand-icon">▶</span> ${i + 1}</td>
             <td style="color:${catColor(c.category)}"><strong>${c.category}</strong></td>
             <td class="num">${fmt(s25)}</td>
             <td class="num">${rp25.toFixed(1)}%</td>
@@ -769,13 +1049,14 @@ function pgChannels(D) {
             ${thSort('Growth %', 'grow')}
           </tr></thead>
           <tbody>${sortData(view.map(c => ({ ...c, name: c.channel }))).map((c, i) => {
+            const rowId = `row-chan-${i}`;
             const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r25 = c[M].r25, r26 = c[M].r26;
             const gAbs = s26 - s25;
             const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
             const rp25 = retP(s25, r25);
             const rp26 = retP(s26, r26);
-            return `<tr>
-              <td>${i + 1}</td>
+            return `<tr id="${rowId}" class="row-clickable" onclick="toggleChannelRow('${rowId}', '${c.channel}')">
+              <td><span class="expand-icon">▶</span> ${i + 1}</td>
               <td><strong>${c.channel}</strong></td>
               <td class="num">${fmt(s25)}</td>
               <td class="num">${rp25.toFixed(1)}%</td>

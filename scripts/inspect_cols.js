@@ -1,30 +1,24 @@
-'use strict';
 const XLSX = require('xlsx');
-const http = require('http');
-const https = require('https');
 
-const url = 'https://kpvezuvifxoatyen.public.blob.vercel-storage.com/New%20Microsoft%20Excel%20Worksheet.xlsx';
+async function main() {
+  console.log('Fetching workbook...');
+  const url = 'https://kpvezuvifxoatyen.public.blob.vercel-storage.com/New%20Microsoft%20Excel%20Worksheet.xlsx';
+  const res = await fetch(url);
+  const buffer = await res.arrayBuffer();
+  console.log('Loading workbook...');
+  const wb = XLSX.read(buffer, { type: 'buffer' });
+  console.log('Available Sheets:', wb.SheetNames);
 
-function downloadBuffer(url) {
-  return new Promise((resolve, reject) => {
-    const proto = url.startsWith('https') ? https : http;
-    const chunks = [];
-    proto.get(url, res => {
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => resolve(Buffer.concat(chunks)));
-    }).on('error', reject);
-  });
+  const sheetName = 'Actual 26';
+  const sheet = wb.Sheets[sheetName];
+
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: null, header: 1 });
+  console.log('\nHeaders for Actual 26:');
+  console.log(rows[0]);
+
+  const dataRows = XLSX.utils.sheet_to_json(sheet, { defval: null });
+  console.log('\nSample Row 1:');
+  console.log(dataRows[0]);
 }
 
-async function run() {
-  const buf = await downloadBuffer(url);
-  const wb = XLSX.read(buf, { type: 'buffer' });
-  const act = XLSX.utils.sheet_to_json(wb.Sheets['Actual 25']);
-  console.log('Actual 25 columns:');
-  console.log(Object.keys(act[0]).join(' | '));
-
-  const cust = XLSX.utils.sheet_to_json(wb.Sheets['Customers']);
-  console.log('\nCustomers columns:');
-  console.log(Object.keys(cust[0]).join(' | '));
-}
-run();
+main().catch(console.error);
