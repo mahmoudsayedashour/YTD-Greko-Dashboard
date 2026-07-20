@@ -233,7 +233,11 @@ function buildResponse(pd, months, rawFilters) {
     chFilter: rawFilters.channel   || null,
     caFilter: rawFilters.category  || null,
     cuFilter: rawFilters.customer !== undefined
-      ? strings.indexOf(rawFilters.customer)   // resolve to ID
+      ? (() => {
+          let idx = strings.indexOf(rawFilters.customer);
+          if (idx === -1) idx = strings.findIndex(s => s.replace(/^\[.*?\]\s*/, '').trim() === rawFilters.customer);
+          return idx;
+        })()
       : undefined,
   };
 

@@ -926,27 +926,26 @@ function pgProducts(D) {
 // ═══════════════════════════════════════════════════════════════
 function pgCustomers(D) {
   const M  = STATE.measure;
-  const cs = sortData(D.customer_data.filter(c => c[M].s26 > 0 && c.in_25));
-  const gold   = cs.slice(0, 10);
-  const silver = cs.slice(10, Math.floor(10 + cs.length * 0.3));
-  const bronze = cs.slice(10 + silver.length);
-  const lost   = sortData(D.customer_data.filter(c => c[M].s25 > 0 && c[M].s26 === 0));
+  const cs = D.customer_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0);
 
-  // Top 10 by Return Ton (sorted descending by r26)
-  const topRet = [...D.customer_data].filter(c => c[M].r26 > 0)
-                                     .sort((a, b) => b[M].r26 - a[M].r26)
-                                     .slice(0, 10);
-
-  // Insights
-  const bestCust = [...D.customer_data].filter(c => c[M].s26 > 0).sort((a, b) => b[M].s26 - a[M].s26)[0];
-  const fastCust = [...D.customer_data].filter(c => c[M].s26 > 0).sort((a, b) => (b[M].s26 - b[M].s25) - (a[M].s26 - a[M].s25))[0];
-  const highRetCust = [...D.customer_data].filter(c => c[M].s26 > 0).sort((a, b) => retP(b[M].s26, b[M].r26) - retP(a[M].s26, a[M].r26))[0];
+  const totalCusts = cs.length;
+  const totalSales26 = cs.reduce((sum, c) => sum + c[M].s26, 0);
+  const totalCompanySales26 = D.total[M].s26;
+  const contribPct = totalCompanySales26 ? (totalSales26 / totalCompanySales26) * 100 : 0;
 
   const insights = [
-    `👤 Top Customer: <span style="color:${C.gold}">${bestCust ? trunc(bestCust.customer, 25) : 'N/A'}</span>`,
-    `📈 Fastest Growing Customer: <span style="color:${C.green}">${fastCust ? trunc(fastCust.customer, 25) : 'N/A'}</span>`,
-    `↩️ Highest Return Customer: <span style="color:${C.red}">${highRetCust ? trunc(highRetCust.customer, 25) : 'N/A'}</span>`
+    `👥 Total Customers: <span style="color:${C.cyan}">${fmt(totalCusts)}</span>`,
+    `📦 Total Customer Sales (Ton): <span style="color:${C.cyan}">${fmt(totalSales26)}</span>`,
+    `📊 Customer Contribution %: <span style="color:${C.cyan}">${contribPct.toFixed(1)}%</span>`
   ];
+
+  // Classify
+  const csSorted = [...cs].sort((a,b) => b[M].s26 - a[M].s26);
+  const silverLen = Math.floor(csSorted.length * 0.3);
+  const silver = csSorted.slice(10, 10 + silverLen);
+  const bronze = csSorted.slice(10 + silverLen);
+  
+  const lost = D.customer_data.filter(c => c[M].s25 > 0 && c[M].s26 === 0);
 
   document.getElementById('page-customers').innerHTML = `
     ${renderInsightsBar(insights)}
@@ -969,10 +968,8 @@ function pgCustomers(D) {
             ${thSort('Customer', 'name')}
             ${thSort('Sales 25', 's25')}
             ${thSort('Return 25 %', 'retP25')}
-            ${thSort('Target 26', 'tgt26')}
             ${thSort('Sales 26', 's26')}
             ${thSort('Return 26 %', 'retP')}
-            ${thSort('Ach %', 'ach26')}
             ${thSort('Growth Ton', 'gAbs')}
             ${thSort('Growth %', 'grow')}
           </tr></thead>
@@ -989,10 +986,8 @@ function pgCustomers(D) {
               <td><strong>${trunc(c.customer, 28)}</strong></td>
               <td class="num">${fmt(s25)}</td>
               <td class="num">${rp25.toFixed(1)}%</td>
-              <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
               <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
               <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
-              <td class="num">${achBadge(a)}</td>
               <td class="num">${fmt(gAbs)}</td>
               <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
             </tr>`;
@@ -1012,9 +1007,10 @@ function pgCustomers(D) {
   `;
   setTimeout(() => {
     mkChart('ch-c-top', { type: 'bar',
-      data: { labels: gold.map(c => wrapLabel(c.customer)), datasets: [{ data: gold.map(c => c[M].s26), backgroundColor: C.gold + 'CC', borderRadius: 4 }] },
+      data: { labels: csSorted.slice(0, 10).map(c => wrapLabel(c.customer)), datasets: [{ data: csSorted.slice(0, 10).map(c => c[M].s26), backgroundColor: C.gold + 'CC', borderRadius: 4 }] },
       options: barOpts(true),
     });
+    const topRet = [...cs].filter(c => c[M].r26 > 0).sort((a, b) => b[M].r26 - a[M].r26).slice(0, 10);
     mkChart('ch-c-ret', { type: 'bar',
       data: { labels: topRet.map(c => wrapLabel(c.customer)), datasets: [{ data: topRet.map(c => c[M].r26), backgroundColor: C.red + 'CC', borderRadius: 4 }] },
       options: barOpts(true),
@@ -1034,13 +1030,13 @@ function pgChannels(D) {
   const chList = validChannels;
 
   const bestChan = [...chs].sort((a, b) => b[M].s26 - a[M].s26)[0];
-  const highGrowChan = [...chs].sort((a, b) => (b[M].s26 - b[M].s25) - (a[M].s26 - a[M].s25))[0];
-  const lowRetChan = [...chs].filter(c => c[M].s26 > 0).sort((a, b) => retP(a[M].s26, a[M].r26) - retP(b[M].s26, b[M].r26))[0];
+  const highGrow = [...chs].filter(c => c[M].s25 > 0).sort((a,b) => grow(b[M].s26, b[M].s25) - grow(a[M].s26, a[M].s25))[0] || [...chs].sort((a,b) => (b[M].s26 - b[M].s25) - (a[M].s26 - a[M].s25))[0];
+  const lowRet = [...chs].sort((a, b) => retP(a[M].s26, a[M].r26) - retP(b[M].s26, b[M].r26))[0];
 
   const insights = [
     `🏪 Best Channel: <span style="color:${C.gold}">${bestChan ? bestChan.channel : 'N/A'}</span>`,
-    `📈 Highest Growth Channel: <span style="color:${C.green}">${highGrowChan ? highGrowChan.channel : 'N/A'}</span>`,
-    `↘ Lowest Return Channel: <span style="color:${C.cyan}">${lowRetChan ? lowRetChan.channel : 'N/A'}</span>`
+    `📈 Highest Growth Channel: <span style="color:${C.green}">${highGrow ? highGrow.channel : 'N/A'}</span>`,
+    `↘ Lowest Return Channel: <span style="color:${C.cyan}">${lowRet ? lowRet.channel : 'N/A'}</span>`
   ];
 
   document.getElementById('page-channels').innerHTML = `
@@ -1296,7 +1292,7 @@ function pgChannels(D) {
 function pgReturns(D) {
   const M    = STATE.measure;
   const cats = [...D.category_data].filter(c => c[M].r25 > 0 || c[M].r26 > 0).sort((a, b) => b[M].r26 - a[M].r26);
-  const topRetCusts = [...D.customer_data].filter(c => c[M].r26 > 0).sort((a, b) => b[M].r26 - a[M].r26).slice(0, 10);
+  const topRetSkus = sortData([...D.product_data]).sort((a, b) => b[M].r26 - a[M].r26).slice(0, 10);
 
   const highRetCat = [...D.category_data].filter(c => c[M].r26 > 0).sort((a, b) => b[M].r26 - a[M].r26)[0];
   const highRetSku = [...D.product_data].filter(c => c[M].r26 > 0).sort((a, b) => b[M].r26 - a[M].r26)[0];
@@ -1317,7 +1313,7 @@ function pgReturns(D) {
       ${card('🗂️ Return Volume by Category', '', cw('ch-r-cat', '300'))}
     </div>
     <div class="chart-grid cols-2" style="margin-top:20px">
-      ${card('👥 Top 10 Customers by Return Ton', 'Sorted descending', cw('ch-r-custs', '300'))}
+      ${card('📦 Top 10 SKU by Return Ton', 'Absolute Returns', cw('ch-r-skus', '300'))}
       ${card('📊 Partial Returns by Category', '', cw('ch-r-partial', '300'))}
     </div>
     <div class="chart-card" style="margin-top:20px">
@@ -1359,8 +1355,8 @@ function pgReturns(D) {
         ] },
       options: { ...barOpts(), plugins: { legend: { position: 'top' } } },
     });
-    mkChart('ch-r-custs', { type: 'bar',
-      data: { labels: topRetCusts.map(c => wrapLabel(c.customer)), datasets: [{ data: topRetCusts.map(c => c[M].r26), backgroundColor: C.red + 'CC', borderRadius: 4 }] },
+    mkChart('ch-r-skus', { type: 'bar',
+      data: { labels: topRetSkus.map(c => wrapLabel(c.product)), datasets: [{ data: topRetSkus.map(c => c[M].r26), backgroundColor: C.red + 'CC', borderRadius: 4 }] },
       options: barOpts(true),
     });
     mkChart('ch-r-partial', { type: 'bar',
