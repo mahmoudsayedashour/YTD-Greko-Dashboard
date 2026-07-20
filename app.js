@@ -930,7 +930,7 @@ function pgCustomers(D) {
 
   const totalCusts = cs.length;
   const totalSales26 = cs.reduce((sum, c) => sum + c[M].s26, 0);
-  const totalCompanySales26 = D.total[M].s26;
+  const totalCompanySales26 = D.meta[M].s26;
   const contribPct = totalCompanySales26 ? (totalSales26 / totalCompanySales26) * 100 : 0;
 
   const insights = [
