@@ -1560,12 +1560,10 @@ function hideLoader() {
 // AUTHENTICATION
 // ═══════════════════════════════════════════════════════════════
 const AUTH_KEY  = 'greko_auth';
-const AUTH_USER = 'GrekoEgypt';
+const AUTH_USER = 'mahmoudashour';
 const AUTH_PASS = 'Greko@2026';
 
-let SESSION_LOGGED_IN = false;
-
-function isLoggedIn() { return SESSION_LOGGED_IN; }
+function isLoggedIn() { return localStorage.getItem(AUTH_KEY) === 'true'; }
 
 function showLogin() {
   hideLoader();
@@ -1588,7 +1586,7 @@ function setupAuth() {
     const u = uInp.value.trim();
     const p = pInp.value;
     if (u === AUTH_USER && p === AUTH_PASS) {
-      SESSION_LOGGED_IN = true;
+      localStorage.setItem(AUTH_KEY, 'true');
       err.style.display = 'none';
       showDashboard();
       loadAndRender();
@@ -1663,13 +1661,6 @@ async function reloadForPeriod() {
 function init() {
   setupAuth();
 
-  if (!isLoggedIn()) {
-    showLogin();
-    return;
-  }
-
-  showDashboard();
-
   // ── Period slicer ────────────────────────────────────────────
   document.querySelectorAll('#period-slicer .measure-btn').forEach(btn => {
     btn.addEventListener('click', e => {
@@ -1703,6 +1694,12 @@ function init() {
   });
 
   // ── Initial load ─────────────────────────────────────────────
+  if (!isLoggedIn()) {
+    showLogin();
+    return;
+  }
+
+  showDashboard();
   loadAndRender();
 }
 
