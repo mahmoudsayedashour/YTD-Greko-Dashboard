@@ -1559,11 +1559,11 @@ function hideLoader() {
 // ═══════════════════════════════════════════════════════════════
 // AUTHENTICATION
 // ═══════════════════════════════════════════════════════════════
-const AUTH_KEY  = 'greko_auth';
-const AUTH_USER = 'mahmoudashour';
+const AUTH_USER = 'GrekoEgypt';
 const AUTH_PASS = 'Greko@2026';
+let IS_LOGGED_IN = false;
 
-function isLoggedIn() { return localStorage.getItem(AUTH_KEY) === 'true'; }
+function isLoggedIn() { return IS_LOGGED_IN; }
 
 function showLogin() {
   hideLoader();
@@ -1586,7 +1586,7 @@ function setupAuth() {
     const u = uInp.value.trim();
     const p = pInp.value;
     if (u === AUTH_USER && p === AUTH_PASS) {
-      localStorage.setItem(AUTH_KEY, 'true');
+      IS_LOGGED_IN = true;
       err.style.display = 'none';
       showDashboard();
       loadAndRender();
@@ -1601,7 +1601,7 @@ function setupAuth() {
   [uInp, pInp].forEach(inp => inp.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); }));
 
   document.getElementById('logout-btn').addEventListener('click', () => {
-    SESSION_LOGGED_IN = false;
+    IS_LOGGED_IN = false;
     location.reload();
   });
 }

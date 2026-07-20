@@ -254,6 +254,7 @@ body {
   display: flex; align-items: center; justify-content: center;
 }
 
+
 .menu-toggle:hover {
   color: var(--text-primary);
   background: var(--bg-glass-light);
@@ -1341,38 +1342,20 @@ body {
 .login-page {
   position: fixed;
   inset: 0;
+  background: var(--bg-main) url('greko_login_bg.jpg') center/contain no-repeat;
   display: flex;
-  background: var(--bg-main);
+  align-items: center;
+  justify-content: center;
   z-index: 99999;
 }
-.login-split {
-  display: flex;
-  width: 100%;
-  height: 100%;
-}
-.login-left {
-  flex: 0 0 480px;
+.login-card {
   background: var(--bg-card);
-  display: flex; align-items: center; justify-content: center;
   padding: 40px;
-  box-shadow: 10px 0 30px rgba(0,0,0,0.3);
-  position: relative;
-  z-index: 10;
-  border-right: 1px solid var(--border-subtle);
-}
-.login-right {
-  flex: 1;
-  background: url('login_artwork.jpg') center/cover no-repeat;
-  position: relative;
-}
-.login-right::before {
-  content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(90deg, var(--bg-card) 0%, transparent 15%);
-}
-.login-card-inner {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-deep);
   width: 100%;
-  max-width: 340px;
+  max-width: 400px;
   text-align: center;
 }
 .login-logo img {
