@@ -928,15 +928,27 @@ function pgCustomers(D) {
   const M  = STATE.measure;
   const cs = D.customer_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0);
 
-  const totalCusts = cs.length;
-  const totalSales26 = cs.reduce((sum, c) => sum + c[M].s26, 0);
+  const top10SalesArr = [...cs].sort((a,b) => b[M].s26 - a[M].s26).slice(0, 10);
+  const top10SalesVal = top10SalesArr.reduce((sum, c) => sum + c[M].s26, 0);
   const totalCompanySales26 = D.meta[M].s26;
-  const contribPct = totalCompanySales26 ? (totalSales26 / totalCompanySales26) * 100 : 0;
+  const top10ContribPct = totalCompanySales26 ? (top10SalesVal / totalCompanySales26) * 100 : 0;
+  
+  const top10RetArr = [...cs].filter(c => c[M].r26 > 0).sort((a,b) => b[M].r26 - a[M].r26).slice(0, 10);
+  const top10RetVal = top10RetArr.reduce((sum, c) => sum + c[M].r26, 0);
+
+  const topSellingCust = top10SalesArr[0];
+  const topRetCust = top10RetArr[0];
+  const topPartialCust = [...cs].filter(c => c[M].partial26 > 0).sort((a,b) => b[M].partial26 - a[M].partial26)[0];
+
+  const unitLabel = M === 'ton' ? 'Ton' : M === 'carton' ? 'Carton' : 'Cups';
 
   const insights = [
-    `👥 Total Customers: <span style="color:${C.cyan}">${fmt(totalCusts)}</span>`,
-    `📦 Total Customer Sales (Ton): <span style="color:${C.cyan}">${fmt(totalSales26)}</span>`,
-    `📊 Customer Contribution %: <span style="color:${C.cyan}">${contribPct.toFixed(1)}%</span>`
+    `🏆 Top 10 Customers Sales: <span style="color:${C.gold}">${fmt(top10SalesVal)}</span> ${unitLabel}`,
+    `📊 Top 10 Customers Contribution: <span style="color:${C.cyan}">${top10ContribPct.toFixed(1)}%</span> of total company sales`,
+    `↩ Top 10 Customers Returns: <span style="color:${C.red}">${fmt(top10RetVal)}</span> ${unitLabel}`,
+    `👤 Top Selling Customer: <span style="color:${C.cyan}">${topSellingCust ? trunc(topSellingCust.customer, 25) : 'N/A'}</span>`,
+    `🔄 Top Return Customer: <span style="color:${C.red}">${topRetCust ? trunc(topRetCust.customer, 25) : 'N/A'}</span>`,
+    `📦 Top Partial Return Customer: <span style="color:${C.gold}">${topPartialCust ? trunc(topPartialCust.customer, 25) : 'N/A'}</span>`
   ];
 
   // Classify
