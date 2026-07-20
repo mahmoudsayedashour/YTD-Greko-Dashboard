@@ -274,7 +274,35 @@ function pgHome(D) {
   const cats = [...D.category_data].filter(c => c[M].s26 > 0 || c[M].s25 > 0)
                                     .sort((a, b) => b[M].s26 - a[M].s26);
 
+  // Calculate Insights dynamically
+  const topCat = [...D.category_data].sort((a, b) => b[M].s26 - a[M].s26)[0];
+  const topSku = [...D.product_data].sort((a, b) => b[M].s26 - a[M].s26)[0];
+  const topCust = [...D.customer_data].sort((a, b) => b[M].s26 - a[M].s26)[0];
+  const topChan = [...D.channel_data].sort((a, b) => b[M].s26 - a[M].s26)[0];
+  const lowCat = [...D.category_data].filter(c => c[M].s26 > 0).sort((a, b) => a[M].s26 - b[M].s26)[0];
+  const rrImp = rp25 - rp26;
+
+  const insights = [
+    `📈 Sales Growth: <span style="color:${g >= 0 ? C.green : C.red}">${fmtP(g)}</span>`,
+    `🎯 Achievement: <span style="color:${C.cyan}">${a26 != null ? a26.toFixed(1) + '%' : 'N/A'}</span>`,
+    `↘ Return Rate Improvement: <span style="color:${rrImp >= 0 ? C.green : C.red}">${rrImp > 0 ? '+' : ''}${rrImp.toFixed(1)}%</span>`,
+    `🏆 Best Category: <span style="color:${C.gold}">${topCat ? topCat.category : 'N/A'}</span>`,
+    `⭐ Top SKU: <span style="color:${C.gold}">${topSku ? trunc(topSku.product, 25) : 'N/A'}</span>`,
+    `👤 Top Customer: <span style="color:${C.gold}">${topCust ? trunc(topCust.customer, 25) : 'N/A'}</span>`,
+    `🏪 Top Channel: <span style="color:${C.gold}">${topChan ? topChan.channel : 'N/A'}</span>`,
+    `⚠ Lowest Category: <span style="color:${C.red}">${lowCat ? lowCat.category : 'N/A'}</span>`
+  ].join('<span style="margin: 0 15px; opacity: 0.3; color: white;">|</span>');
+
   document.getElementById('page-home').innerHTML = `
+    <div class="insights-bar">
+      <div class="insights-label">Executive Insights</div>
+      <div class="ticker-wrap">
+        <div class="ticker-content">
+          ${insights}
+        </div>
+      </div>
+    </div>
+
     <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
       ${kpi('💰', `Sales 2026`, fmt(mm.s26), null, 'cyan', `Target: ${hasTgt(mm.tgt26) ? fmt(mm.tgt26) : 'N/A'}`)}
       ${kpi('📅', `Sales 2025`, fmt(mm.s25), null, 'blue', `Target: ${hasTgt(mm.tgt25) ? fmt(mm.tgt25) : 'N/A'}`)}

@@ -1536,3 +1536,58 @@ body {
   color: #fff;
   border-color: transparent;
 }
+
+/* =====================================================
+   EXECUTIVE INSIGHTS TICKER
+   ===================================================== */
+.insights-bar {
+  background: linear-gradient(135deg, #102a20, #0a1a14);
+  border: 1px solid rgba(0, 255, 128, 0.2);
+  box-shadow: 0 4px 15px rgba(0, 255, 128, 0.1);
+  border-radius: var(--radius-sm);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  padding: 10px 15px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.insights-label {
+  font-weight: bold;
+  color: #00ff80;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding-right: 15px;
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+  margin-right: 15px;
+  flex-shrink: 0;
+  z-index: 2;
+  background: linear-gradient(135deg, #102a20, #0a1a14);
+}
+
+.ticker-wrap {
+  flex-grow: 1;
+  overflow: hidden;
+  position: relative;
+  mask-image: linear-gradient(to right, transparent, black 2%, black 98%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 2%, black 98%, transparent);
+}
+
+.ticker-content {
+  display: inline-block;
+  white-space: nowrap;
+  padding-left: 100%;
+  animation: ticker 35s linear infinite;
+  font-size: 12px;
+}
+
+.ticker-content:hover {
+  animation-play-state: paused;
+}
+
+@keyframes ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
