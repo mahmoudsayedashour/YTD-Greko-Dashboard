@@ -410,35 +410,84 @@ function renderNestedProductTable(dataArray, title) {
   `;
 }
 
+
 window.toggleCustomerRow = (rowId, customerName) => {
   toggleRowLevel(rowId, 'L1', 11, async () => {
     const data = await fetchDrilldownData({ customer: customerName });
     const M = STATE.measure;
+    
+    const catView = data.category_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0);
+    catView.sort((a,b) => b[M].s26 - a[M].s26);
+    
+    const tableHtml = `
+      <div class="nested-card" style="margin:0; box-shadow:none; border:none; padding:0;">
+        <div class="chart-header" style="margin-bottom: 12px; padding:0;">
+          <div class="chart-title" style="font-size:12px; opacity:0.8;">📋 Category Summary – ${customerName}</div>
+        </div>
+        <div class="data-table-wrapper" style="max-height:400px;overflow-y:auto; border-radius: 8px;">
+          <table class="data-table" style="margin:0;">
+            <thead style="position:sticky; top:0; z-index:2; background:var(--bg-card);"><tr>
+              <th>#</th>
+              <th style="text-align:left">Category</th>
+              <th class="num">Sales 25</th>
+              <th class="num">Return 25 %</th>
+              <th class="num">Target 26</th>
+              <th class="num">Sales 26</th>
+              <th class="num">Return 26 %</th>
+              <th class="num">Ach %</th>
+              <th class="num">Growth Ton</th>
+              <th class="num">Growth %</th>
+            </tr></thead>
+            <tbody>${catView.map((c, i) => {
+              const catId = `nested-cat-cust-${i}`;
+              const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r25 = c[M].r25, r26 = c[M].r26;
+              const gAbs = s26 - s25;
+              const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
+              const rp25 = retP(s25, r25);
+              const rp26 = retP(s26, r26);
+              return `<tr id="${catId}" class="row-clickable" onclick="toggleCategoryRow('${catId}', '${c.category}', 'customer', '${customerName}')">
+                <td><span class="expand-icon">▶</span> ${i + 1}</td>
+                <td style="text-align:left; color:${catColor(c.category)}; font-weight:bold;">${c.category}</td>
+                <td class="num">${fmt(s25)}</td>
+                <td class="num">${rp25.toFixed(1)}%</td>
+                <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
+                <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+                <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
+                <td class="num">${achBadge(a)}</td>
+                <td class="num">${fmt(gAbs)}</td>
+                <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    
     const custRow = data.customer_data.find(c => c.customer === customerName);
     const s26 = custRow ? custRow[M].s26 : 0;
     const g = custRow ? grow(custRow[M].s26, custRow[M].s25) : 0;
     const a = custRow && hasTgt(custRow[M].tgt26) ? ach(custRow[M].s26, custRow[M].tgt26) : null;
-    const skuCount = data.product_data.filter(p => p[M].s26 > 0 || p[M].s25 > 0).length;
+    const catCount = catView.length;
 
     const summaryHtml = renderSummaryCard(customerName, [
-      { label: 'Products', value: skuCount },
+      { label: 'Categories', value: catCount },
       { label: 'Sales 26', value: fmt(s26), color: C.cyan },
       { label: 'Growth %', value: fmtP(g), color: g >= 0 ? C.green : C.red },
       { label: 'Ach %', value: a != null ? a.toFixed(1) + '%' : 'N/A', color: a != null && a >= 100 ? C.green : C.gold }
     ]);
 
-    const tableHtml = renderNestedProductTable(data.product_data, 'Customer Product Matrix');
     return `<div class="nested-card">${summaryHtml}${tableHtml}</div>`;
   });
 };
 
-window.toggleCategoryRow = (rowId, categoryName, channelName = null) => {
-  // If we are in channel drilldown, use L2, otherwise L1
-  const level = channelName ? 'L2' : 'L1';
+window.toggleCategoryRow = (rowId, categoryName, contextType = null, contextValue = null) => {
+  const level = contextType ? 'L2' : 'L1';
   toggleRowLevel(rowId, level, 11, async () => {
     let sourceData = STATE.data;
-    if (channelName) {
-       sourceData = await fetchDrilldownData({ channel: channelName });
+    if (contextType === 'channel') {
+       sourceData = await fetchDrilldownData({ channel: contextValue });
+    } else if (contextType === 'customer') {
+       sourceData = await fetchDrilldownData({ customer: contextValue });
     }
     const M = STATE.measure;
     const catRow = sourceData.category_data.find(c => c.category === categoryName);
@@ -448,7 +497,7 @@ window.toggleCategoryRow = (rowId, categoryName, channelName = null) => {
     
     const catSkus = sourceData.product_data.filter(p => p.category === categoryName && (p[M].s26 > 0 || p[M].s25 > 0));
 
-    const summaryHtml = renderSummaryCard(categoryName + (channelName ? ` (${channelName})` : ''), [
+    const summaryHtml = renderSummaryCard(categoryName + (contextValue ? ` (${contextValue})` : ''), [
       { label: 'SKUs', value: catSkus.length },
       { label: 'Sales 26', value: fmt(s26), color: C.cyan },
       { label: 'Growth %', value: fmtP(g), color: g >= 0 ? C.green : C.red },
@@ -468,7 +517,6 @@ window.toggleChannelRow = (rowId, channelName) => {
     const catView = data.category_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0);
     catView.sort((a,b) => b[M].s26 - a[M].s26);
     
-    // Render Category Table for this Channel
     const tableHtml = `
       <div class="nested-card" style="margin:0; box-shadow:none; border:none; padding:0;">
         <div class="chart-header" style="margin-bottom: 12px; padding:0;">
@@ -495,8 +543,7 @@ window.toggleChannelRow = (rowId, channelName) => {
               const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
               const rp25 = retP(s25, r25);
               const rp26 = retP(s26, r26);
-              // Use L2 toggle
-              return `<tr id="${catId}" class="row-clickable" onclick="toggleCategoryRow('${catId}', '${c.category}', '${channelName}')">
+              return `<tr id="${catId}" class="row-clickable" onclick="toggleCategoryRow('${catId}', '${c.category}', 'channel', '${channelName}')">
                 <td><span class="expand-icon">▶</span> ${i + 1}</td>
                 <td style="text-align:left; color:${catColor(c.category)}; font-weight:bold;">${c.category}</td>
                 <td class="num">${fmt(s25)}</td>
