@@ -16,29 +16,33 @@
 
   <!-- ═══════════════════ LOGIN PAGE ═══════════════════ -->
   <div id="login-page" class="login-page" style="display:none">
-    <div class="login-card">
-      <div class="login-logo">
-        <img src="greko_logo.png" alt="Greko Egypt"
-             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-        <div class="brand-text-fallback" style="display:none;flex-direction:column;align-items:center;gap:2px">
-          <span class="brand-greko">greko</span><span class="brand-egypt">EGYPT</span>
+    <div class="login-split">
+      <div class="login-left">
+        <div class="login-card-inner">
+          <div class="login-logo">
+            <div style="font-size:32px; font-weight:900; letter-spacing:-1px; color:#fff; display:flex; align-items:center; justify-content:center; margin-bottom: 24px;">
+              <span style="color:#00e676;">greko</span>
+              <span style="font-weight:300; margin-left:6px; opacity:0.8; font-size:20px; align-self:flex-end; padding-bottom:4px">EGYPT</span>
+            </div>
+          </div>
+          <h1 class="login-title">Sales Analytics Platform</h1>
+          <p class="login-sub">Sign in to access the dashboard</p>
+          <div class="login-form">
+            <div class="login-field">
+              <label for="login-user">Username</label>
+              <input id="login-user" type="text" autocomplete="off" value="">
+            </div>
+            <div class="login-field">
+              <label for="login-pass">Password</label>
+              <input id="login-pass" type="password" autocomplete="new-password" value="">
+            </div>
+            <div id="login-error" class="login-error" style="display:none">Invalid username or password</div>
+            <button id="login-btn" class="login-btn">Sign In</button>
+          </div>
+          <p class="login-footer">Greko Egypt © 2026 – Confidential</p>
         </div>
       </div>
-      <h1 class="login-title">Sales Dashboard</h1>
-      <p class="login-sub">Sign in to access the dashboard</p>
-      <div class="login-form">
-        <div class="login-field">
-          <label for="login-user">Username</label>
-          <input id="login-user" type="text" placeholder="Enter username" autocomplete="username">
-        </div>
-        <div class="login-field">
-          <label for="login-pass">Password</label>
-          <input id="login-pass" type="password" placeholder="Enter password" autocomplete="current-password">
-        </div>
-        <div id="login-error" class="login-error" style="display:none">Invalid username or password</div>
-        <button id="login-btn" class="login-btn">Sign In</button>
-      </div>
-      <p class="login-footer">Greko Egypt © 2026 – Confidential</p>
+      <div class="login-right"></div>
     </div>
   </div>
 
