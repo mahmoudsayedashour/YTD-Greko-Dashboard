@@ -67,7 +67,24 @@ const catColor = c => CAT_COLORS[c] || C.gray;
 const fmt  = n => n == null || isNaN(n) ? '–' :
   n.toLocaleString('en', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const fmtP = n => n == null || isNaN(n) ? '–' : (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
-const trunc = (s, n = 22) => !s ? '' : s.length > n ? s.slice(0, n) + '…' : s;
+const trunc = s => s || '';
+const wrapLabel = (s, maxLen = 25) => {
+  if (!s) return '';
+  if (s.length <= maxLen) return s;
+  const words = s.split(' ');
+  const lines = [];
+  let current = '';
+  for (const w of words) {
+    if ((current + ' ' + w).trim().length > maxLen) {
+      if (current) lines.push(current);
+      current = w;
+    } else {
+      current = current ? current + ' ' + w : w;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+};
 
 // ═══════════════════════════════════════════════════════════════
 // CALCULATION HELPERS  (single engine – mirrors DAX)
@@ -85,16 +102,16 @@ const barOpts = (iH = false) => ({
   responsive: true, maintainAspectRatio: false,
   plugins: { legend: { display: false } },
   scales: {
-    x: { grid: { color: 'rgba(255,255,255,0.05)', display: !iH }, ticks: { font: { size: 10 } } },
-    y: { grid: { color: 'rgba(255,255,255,0.05)', display:  iH }, ticks: { font: { size: 10 } } },
+    x: { grid: { color: 'rgba(255,255,255,0.05)', display: !iH }, ticks: { font: { size: 9 }, autoSkip: false } },
+    y: { grid: { color: 'rgba(255,255,255,0.05)', display:  iH }, ticks: { font: { size: 9 }, autoSkip: false } },
   },
 });
 const lineOpts = () => ({
   responsive: true, maintainAspectRatio: false,
   plugins: { legend: { position: 'bottom' } },
   scales: {
-    x: { grid: { display: false } },
-    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { font: { size: 10 } } },
+    x: { grid: { display: false }, ticks: { font: { size: 9 }, autoSkip: false } },
+    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { font: { size: 9 } } },
   },
 });
 
@@ -211,6 +228,14 @@ async function fetchData(months) {
   if (data.success === false) {
     throw new Error(JSON.stringify(data, null, 2));
   }
+  
+  // Clean customer names (remove [CODE] prefix)
+  if (data.customer_data) {
+    data.customer_data.forEach(c => {
+      if (c.customer) c.customer = c.customer.replace(/^\[.*?\]\s*/, '').trim();
+    });
+  }
+  
   return data;
 }
 
@@ -341,7 +366,7 @@ function pgHome(D) {
   setTimeout(() => {
     // Doughnut
     mkChart('ch-h-cat', { type: 'doughnut',
-      data: { labels: cats.map(c => c.category),
+      data: { labels: cats.map(c => wrapLabel(c.category)),
         datasets: [{ data: cats.map(c => c[M].s26), backgroundColor: cats.map(c => catColor(c.category)), borderWidth: 1, borderColor: '#0a1628' }] },
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } },
     });
@@ -360,7 +385,7 @@ function pgHome(D) {
 
     // Category growth
     mkChart('ch-h-catgrow', { type: 'bar',
-      data: { labels: cats.map(c => c.category),
+      data: { labels: cats.map(c => wrapLabel(c.category)),
         datasets: [
           { label: '2025', data: cats.map(c => c[M].s25), backgroundColor: C.blueL + 'BB', borderRadius: 3,
             datalabels: { formatter: v => fmt(v), color: '#fff', align: 'center', anchor: 'center' } },
@@ -387,7 +412,7 @@ function pgHome(D) {
       rp: retP(c[M].s26, c[M].r26)
     })).sort((a,b) => b.rp - a.rp).slice(0, 10);
     mkChart('ch-h-ret', { type: 'bar',
-      data: { labels: retCats.map(c => c.name),
+      data: { labels: retCats.map(c => wrapLabel(c.name)),
         datasets: [{ data: retCats.map(c => c.rp),
           backgroundColor: C.red + 'CC',
           borderRadius: 4, datalabels: { formatter: v => v.toFixed(1) + '%' } }] },
@@ -544,7 +569,7 @@ function pgProducts(D) {
   `;
   setTimeout(() => {
     mkChart('ch-p-top', { type: 'bar',
-      data: { labels: top10.map(p => trunc(p.product, 20)), datasets: [{ data: top10.map(p => p[M].s26), backgroundColor: C.cyan + 'BB', borderRadius: 4 }] },
+      data: { labels: top10.map(p => wrapLabel(p.product)), datasets: [{ data: top10.map(p => p[M].s26), backgroundColor: C.cyan + 'BB', borderRadius: 4 }] },
       options: barOpts(true),
     });
     const pRetCats = [...cg].filter(c => c[M].s26 > 0).map(c => ({
@@ -559,7 +584,7 @@ function pgProducts(D) {
       options: barOpts(true),
     });
     mkChart('ch-p-catsum', { type: 'bar',
-      data: { labels: cg.map(c => c.category),
+      data: { labels: cg.map(c => wrapLabel(c.category)),
         datasets: [
           { label: '2025', data: cg.map(c => c[M].s25), backgroundColor: C.blueL + 'AA', borderRadius: 3 },
           { label: '2026', data: cg.map(c => c[M].s26), backgroundColor: cg.map(c => catColor(c.category) + 'CC'), borderRadius: 3 },
@@ -659,11 +684,11 @@ function pgCustomers(D) {
   `;
   setTimeout(() => {
     mkChart('ch-c-top', { type: 'bar',
-      data: { labels: gold.map(c => trunc(c.customer, 20)), datasets: [{ data: gold.map(c => c[M].s26), backgroundColor: C.gold + 'CC', borderRadius: 4 }] },
+      data: { labels: gold.map(c => wrapLabel(c.customer)), datasets: [{ data: gold.map(c => c[M].s26), backgroundColor: C.gold + 'CC', borderRadius: 4 }] },
       options: barOpts(true),
     });
     mkChart('ch-c-ret', { type: 'bar',
-      data: { labels: topRet.map(c => trunc(c.customer, 20)), datasets: [{ data: topRet.map(c => c[M].r26), backgroundColor: C.red + 'CC', borderRadius: 4 }] },
+      data: { labels: topRet.map(c => wrapLabel(c.customer)), datasets: [{ data: topRet.map(c => c[M].r26), backgroundColor: C.red + 'CC', borderRadius: 4 }] },
       options: barOpts(true),
     });
   }, 50);
@@ -1006,7 +1031,7 @@ function pgReturns(D) {
       options: { ...barOpts(), plugins: { legend: { position: 'top' } } },
     });
     mkChart('ch-r-custs', { type: 'bar',
-      data: { labels: topRetCusts.map(c => trunc(c.customer, 20)), datasets: [{ data: topRetCusts.map(c => c[M].r26), backgroundColor: C.red + 'CC', borderRadius: 4 }] },
+      data: { labels: topRetCusts.map(c => wrapLabel(c.customer)), datasets: [{ data: topRetCusts.map(c => c[M].r26), backgroundColor: C.red + 'CC', borderRadius: 4 }] },
       options: barOpts(true),
     });
     mkChart('ch-r-partial', { type: 'bar',
@@ -1069,7 +1094,7 @@ function pgGrowth(D) {
   setTimeout(() => {
     const sorted = [...cats].sort((a, b) => (b[M].s26 - b[M].s25) - (a[M].s26 - a[M].s25));
     mkChart('ch-g-cat', { type: 'bar',
-      data: { labels: sorted.map(c => c.category),
+      data: { labels: sorted.map(c => wrapLabel(c.category)),
         datasets: [{ data: sorted.map(c => c[M].s26 - c[M].s25),
           backgroundColor: sorted.map(c => c[M].s26 >= c[M].s25 ? C.green + 'CC' : C.red + 'CC'),
           borderRadius: 4, datalabels: { formatter: v => (v >= 0 ? '+' : '') + fmt(v) } }] },
@@ -1077,7 +1102,7 @@ function pgGrowth(D) {
     });
     const sortedP = [...cats].sort((a, b) => grow(b[M].s26, b[M].s25) - grow(a[M].s26, a[M].s25));
     mkChart('ch-g-catp', { type: 'bar',
-      data: { labels: sortedP.map(c => c.category),
+      data: { labels: sortedP.map(c => wrapLabel(c.category)),
         datasets: [{ data: sortedP.map(c => grow(c[M].s26, c[M].s25)),
           backgroundColor: sortedP.map(c => grow(c[M].s26, c[M].s25) >= 0 ? C.green + 'CC' : C.red + 'CC'),
           borderRadius: 4, datalabels: { formatter: v => fmtP(v) } }] },
