@@ -726,7 +726,7 @@ function pgChannels(D) {
               const rp25 = retP(s25, r25);
               const rp26 = retP(s26, r26);
               return `<tr>
-                <td style="text-align:left"><span class="badge" style="background:${catColor(c.category)}">${c.category}</span></td>
+                <td style="text-align:left; color:${catColor(c.category)}; font-weight:bold;">${c.category}</td>
                 <td class="num">${fmt(s25)}</td>
                 <td class="num">${rp25.toFixed(1)}%</td>
                 <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
@@ -763,7 +763,7 @@ function pgChannels(D) {
               const rp26 = retP(s26, r26);
               return `<tr>
                 <td style="text-align:left"><strong>${c.product}</strong><br><span style="font-size:10px;opacity:0.6">${c.code}</span></td>
-                <td style="text-align:left"><span class="badge" style="background:${catColor(c.category)}">${c.category}</span></td>
+                <td style="text-align:left; color:${catColor(c.category)}; font-weight:bold;">${c.category}</td>
                 <td class="num">${fmt(s25)}</td>
                 <td class="num">${rp25.toFixed(1)}%</td>
                 <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
