@@ -323,13 +323,19 @@ function pgHome(D) {
     mkChart('ch-h-catgrow', { type: 'bar',
       data: { labels: cats.map(c => c.category),
         datasets: [
-          { label: '2025', data: cats.map(c => c[M].s25), backgroundColor: C.blueL + 'BB', borderRadius: 3, datalabels: { display: false } },
+          { label: '2025', data: cats.map(c => c[M].s25), backgroundColor: C.blueL + 'BB', borderRadius: 3,
+            datalabels: { formatter: v => fmt(v), color: '#fff', align: 'center', anchor: 'center' } },
           { label: '2026', data: cats.map(c => c[M].s26), backgroundColor: cats.map(c => catColor(c.category) + 'BB'), borderRadius: 3,
             datalabels: {
-              formatter: (v, ctx) => fmtP(grow(cats[ctx.dataIndex][M].s26, cats[ctx.dataIndex][M].s25)),
-              color: ctx => grow(cats[ctx.dataIndex][M].s26, cats[ctx.dataIndex][M].s25) >= 0 ? C.green : C.red,
-              font: { weight: 'bold', size: 11 },
-              align: 'top', anchor: 'end'
+              labels: {
+                value: { formatter: v => fmt(v), color: '#fff', align: 'center', anchor: 'center' },
+                growth: {
+                  formatter: (v, ctx) => fmtP(grow(cats[ctx.dataIndex][M].s26, cats[ctx.dataIndex][M].s25)),
+                  color: ctx => grow(cats[ctx.dataIndex][M].s26, cats[ctx.dataIndex][M].s25) >= 0 ? C.green : C.red,
+                  font: { weight: 'bold', size: 11 },
+                  align: 'top', anchor: 'end'
+                }
+              }
             }
           },
         ] },

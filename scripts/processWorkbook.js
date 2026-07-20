@@ -217,7 +217,15 @@ function parseActual(wb, sheetName, channelMap, ST, classMap) {
 
     const partner = ss(r['Invoice Partner Display Name.1'] ?? r['Invoice lines/Partner'] ?? r['Invoice Partner Display Name'] ?? r['Partner'] ?? '');
     const tag     = ss(r['Tags'] ?? r['tags'] ?? r['Classification'] ?? r['Customer Category'] ?? '');
+    const ch      = ss(r['Channel'] ?? r['channel'] ?? r['Trade Channel'] ?? r['Sales Channel']);
     if (partner && tag) classMap[partner] = tag;
+    if (partner && ch) {
+      channelMap[partner] = ch;
+      const norm = partner.replace(/\s+/g, ' ').trim();
+      if (norm !== partner) channelMap[norm] = ch;
+      const codeM = partner.match(/^\[([^\]]+)\]/);
+      if (codeM) channelMap['__code__' + codeM[1]] = ch;
+    }
 
     const code    = ss(r['Code']);
     const type    = ss(r['Invoice lines/Number Type']);
