@@ -254,6 +254,24 @@ function renderPage() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// EXECUTIVE INSIGHTS HELPER
+// ═══════════════════════════════════════════════════════════════
+function renderInsightsBar(insights) {
+  if (!insights || insights.length === 0) return '';
+  const html = insights.join('<span style="margin: 0 15px; opacity: 0.3; color: white;">|</span>');
+  return `
+    <div class="insights-bar">
+      <div class="insights-label">Executive Insights</div>
+      <div class="ticker-wrap">
+        <div class="ticker-content">
+          ${html}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // HOME  (Executive + Year Comparison merged)
 // ═══════════════════════════════════════════════════════════════
 function pgHome(D) {
@@ -291,17 +309,10 @@ function pgHome(D) {
     `👤 Top Customer: <span style="color:${C.gold}">${topCust ? trunc(topCust.customer, 25) : 'N/A'}</span>`,
     `🏪 Top Channel: <span style="color:${C.gold}">${topChan ? topChan.channel : 'N/A'}</span>`,
     `⚠ Lowest Category: <span style="color:${C.red}">${lowCat ? lowCat.category : 'N/A'}</span>`
-  ].join('<span style="margin: 0 15px; opacity: 0.3; color: white;">|</span>');
+  ];
 
   document.getElementById('page-home').innerHTML = `
-    <div class="insights-bar">
-      <div class="insights-label">Executive Insights</div>
-      <div class="ticker-wrap">
-        <div class="ticker-content">
-          ${insights}
-        </div>
-      </div>
-    </div>
+    ${renderInsightsBar(insights)}
 
     <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
       ${kpi('💰', `Sales 2026`, fmt(mm.s26), null, 'cyan', `Target: ${hasTgt(mm.tgt26) ? fmt(mm.tgt26) : 'N/A'}`)}
@@ -404,7 +415,21 @@ function pgYTD(D) {
   const M = STATE.measure;
   const items = sortData(D.product_data.map(p => ({ ...p, name: p.product })));
 
+  const validItems = items.filter(p => p[M].s26 > 0 || p[M].s25 > 0);
+  const bestSku = [...validItems].sort((a, b) => b[M].s26 - a[M].s26)[0];
+  const highGrowSku = [...validItems].sort((a, b) => (b[M].s26 - b[M].s25) - (a[M].s26 - a[M].s25))[0];
+  const highRetSku = [...validItems].sort((a, b) => retP(b[M].s26, b[M].r26) - retP(a[M].s26, a[M].r26))[0];
+  const bestAchSku = [...validItems].filter(p => hasTgt(p[M].tgt26)).sort((a, b) => ach(b[M].s26, b[M].tgt26) - ach(a[M].s26, a[M].tgt26))[0];
+
+  const insights = [
+    `⭐ Best Selling SKU: <span style="color:${C.gold}">${bestSku ? trunc(bestSku.product, 25) : 'N/A'}</span>`,
+    `📈 Highest Growth SKU: <span style="color:${C.green}">${highGrowSku ? trunc(highGrowSku.product, 25) : 'N/A'}</span>`,
+    `↩️ Highest Return SKU: <span style="color:${C.red}">${highRetSku ? trunc(highRetSku.product, 25) : 'N/A'}</span>`,
+    `🎯 Best Achievement SKU: <span style="color:${C.cyan}">${bestAchSku ? trunc(bestAchSku.product, 25) : 'N/A'}</span>`
+  ];
+
   document.getElementById('page-ytd').innerHTML = `
+    ${renderInsightsBar(insights)}
     <div class="chart-card">
       <div class="chart-header"><div class="chart-title">📋 Full YTD Product Matrix</div></div>
       <div class="data-table-wrapper" style="max-height:500px;overflow-y:auto">
@@ -458,7 +483,20 @@ function pgProducts(D) {
   const top10 = prods.slice(0, 10);
   const cg    = [...D.category_data].sort((a, b) => b[M].s26 - a[M].s26);
 
+  const bestCat = cg[0];
+  const highGrowCat = [...cg].sort((a, b) => (b[M].s26 - b[M].s25) - (a[M].s26 - a[M].s25))[0];
+  const highRetCat = [...cg].sort((a, b) => retP(b[M].s26, b[M].r26) - retP(a[M].s26, a[M].r26))[0];
+  const bestAchCat = [...cg].filter(c => hasTgt(c[M].tgt26)).sort((a, b) => ach(b[M].s26, b[M].tgt26) - ach(a[M].s26, a[M].tgt26))[0];
+
+  const insights = [
+    `🏆 Best Category: <span style="color:${C.gold}">${bestCat ? bestCat.category : 'N/A'}</span>`,
+    `📈 Highest Growth Category: <span style="color:${C.green}">${highGrowCat ? highGrowCat.category : 'N/A'}</span>`,
+    `↩️ Highest Return Category: <span style="color:${C.red}">${highRetCat ? highRetCat.category : 'N/A'}</span>`,
+    `🎯 Best Achievement Category: <span style="color:${C.cyan}">${bestAchCat ? bestAchCat.category : 'N/A'}</span>`
+  ];
+
   document.getElementById('page-products').innerHTML = `
+    ${renderInsightsBar(insights)}
     <div class="chart-grid cols-2">
       ${card('🏆 Top 10 Products 2026', 'By absolute sales', cw('ch-p-top', '300'))}
       ${card('↩️ Top 10 Categories by Return %', 'Highest Return Rates', cw('ch-p-ret', '300'))}
@@ -547,7 +585,19 @@ function pgCustomers(D) {
                                      .sort((a, b) => b[M].r26 - a[M].r26)
                                      .slice(0, 10);
 
+  // Insights
+  const bestCust = [...D.customer_data].filter(c => c[M].s26 > 0).sort((a, b) => b[M].s26 - a[M].s26)[0];
+  const fastCust = [...D.customer_data].filter(c => c[M].s26 > 0).sort((a, b) => (b[M].s26 - b[M].s25) - (a[M].s26 - a[M].s25))[0];
+  const highRetCust = [...D.customer_data].filter(c => c[M].s26 > 0).sort((a, b) => retP(b[M].s26, b[M].r26) - retP(a[M].s26, a[M].r26))[0];
+
+  const insights = [
+    `👤 Top Customer: <span style="color:${C.gold}">${bestCust ? trunc(bestCust.customer, 25) : 'N/A'}</span>`,
+    `📈 Fastest Growing Customer: <span style="color:${C.green}">${fastCust ? trunc(fastCust.customer, 25) : 'N/A'}</span>`,
+    `↩️ Highest Return Customer: <span style="color:${C.red}">${highRetCust ? trunc(highRetCust.customer, 25) : 'N/A'}</span>`
+  ];
+
   document.getElementById('page-customers').innerHTML = `
+    ${renderInsightsBar(insights)}
     <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
       ${kpi('🥇', 'Gold (Top 10)', '10', null, 'gold', 'Best returning customers')}
       ${kpi('🥈', 'Silver', silver.length.toString(), null, 'cyan', 'Next 30%')}
@@ -630,7 +680,18 @@ function pgChannels(D) {
   const filtCh = STATE.chFilter;
   const chList = validChannels;
 
+  const bestChan = [...chs].sort((a, b) => b[M].s26 - a[M].s26)[0];
+  const highGrowChan = [...chs].sort((a, b) => (b[M].s26 - b[M].s25) - (a[M].s26 - a[M].s25))[0];
+  const lowRetChan = [...chs].filter(c => c[M].s26 > 0).sort((a, b) => retP(a[M].s26, a[M].r26) - retP(b[M].s26, b[M].r26))[0];
+
+  const insights = [
+    `🏪 Best Channel: <span style="color:${C.gold}">${bestChan ? bestChan.channel : 'N/A'}</span>`,
+    `📈 Highest Growth Channel: <span style="color:${C.green}">${highGrowChan ? highGrowChan.channel : 'N/A'}</span>`,
+    `↘ Lowest Return Channel: <span style="color:${C.cyan}">${lowRetChan ? lowRetChan.channel : 'N/A'}</span>`
+  ];
+
   document.getElementById('page-channels').innerHTML = `
+    ${renderInsightsBar(insights)}
     <div class="channel-controls">
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <label style="font-size:12px;color:#8899bb">Channel:</label>
@@ -883,7 +944,20 @@ function pgReturns(D) {
   const cats = [...D.category_data].filter(c => c[M].r25 > 0 || c[M].r26 > 0).sort((a, b) => b[M].r26 - a[M].r26);
   const topRetCusts = [...D.customer_data].filter(c => c[M].r26 > 0).sort((a, b) => b[M].r26 - a[M].r26).slice(0, 10);
 
+  const highRetCat = [...D.category_data].filter(c => c[M].r26 > 0).sort((a, b) => b[M].r26 - a[M].r26)[0];
+  const highRetSku = [...D.product_data].filter(c => c[M].r26 > 0).sort((a, b) => b[M].r26 - a[M].r26)[0];
+  const mm = D.meta[M];
+  const overallRetP = retP(mm.s26, mm.r26);
+
+  const insights = [
+    `↩️ Highest Return Category: <span style="color:${C.red}">${highRetCat ? highRetCat.category : 'N/A'}</span>`,
+    `↩️ Highest Return SKU: <span style="color:${C.red}">${highRetSku ? trunc(highRetSku.product, 25) : 'N/A'}</span>`,
+    `📉 Lowest Return Rate: <span style="color:${C.cyan}">${overallRetP.toFixed(1)}%</span>`,
+    `🔄 Partial Returns: <span style="color:${C.gold}">${fmt(mm.partial26)}</span>`
+  ];
+
   document.getElementById('page-returns').innerHTML = `
+    ${renderInsightsBar(insights)}
     <div class="chart-grid cols-2">
       ${card('📅 Monthly Return Trend', '2025 vs 2026', cw('ch-r-mon', '300'))}
       ${card('🗂️ Return Volume by Category', '', cw('ch-r-cat', '300'))}
@@ -950,7 +1024,20 @@ function pgGrowth(D) {
   const M    = STATE.measure;
   const cats = sortData(D.category_data.map(c => ({ ...c, name: c.category }))).filter(c => c[M].s25 > 0 || c[M].s26 > 0);
 
+  const fastCat = [...D.category_data].filter(c => c[M].s26 > 0).sort((a, b) => (b[M].s26 - b[M].s25) - (a[M].s26 - a[M].s25))[0];
+  const fastSku = [...D.product_data].filter(c => c[M].s26 > 0).sort((a, b) => (b[M].s26 - b[M].s25) - (a[M].s26 - a[M].s25))[0];
+  const fastCust = [...D.customer_data].filter(c => c[M].s26 > 0).sort((a, b) => (b[M].s26 - b[M].s25) - (a[M].s26 - a[M].s25))[0];
+  const fastChan = [...D.channel_data].filter(c => c[M].s26 > 0).sort((a, b) => (b[M].s26 - b[M].s25) - (a[M].s26 - a[M].s25))[0];
+
+  const insights = [
+    `📈 Fastest Growing Category: <span style="color:${C.green}">${fastCat ? fastCat.category : 'N/A'}</span>`,
+    `📈 Fastest Growing SKU: <span style="color:${C.green}">${fastSku ? trunc(fastSku.product, 25) : 'N/A'}</span>`,
+    `📈 Fastest Growing Customer: <span style="color:${C.green}">${fastCust ? trunc(fastCust.customer, 25) : 'N/A'}</span>`,
+    `📈 Fastest Growing Channel: <span style="color:${C.green}">${fastChan ? fastChan.channel : 'N/A'}</span>`
+  ];
+
   document.getElementById('page-growth').innerHTML = `
+    ${renderInsightsBar(insights)}
     <div class="chart-grid cols-2">
       ${card('📊 Growth Variance by Category', 'Absolute Δ (2026 − 2025)', cw('ch-g-cat', '350'))}
       ${card('📈 Growth % by Category', 'Relative Δ', cw('ch-g-catp', '350'))}
