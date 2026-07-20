@@ -831,7 +831,7 @@ function pgYTD(D) {
 function pgProducts(D) {
   const M     = STATE.measure;
   const prods = sortData(D.product_data.filter(p => p[M].s26 > 0 || p[M].s25 > 0));
-  const top10 = prods.slice(0, 10);
+  const top10Cats = sortData([...D.category_data]).sort((a,b) => b[M].s26 - a[M].s26).slice(0, 10);
   const cg    = [...D.category_data].sort((a, b) => b[M].s26 - a[M].s26);
 
   const bestCat = cg[0];
@@ -849,7 +849,7 @@ function pgProducts(D) {
   document.getElementById('page-products').innerHTML = `
     ${renderInsightsBar(insights)}
     <div class="chart-grid cols-2">
-      ${card('🏆 Top 10 Products 2026', 'By absolute sales', cw('ch-p-top', '300'))}
+      ${card('🏆 Top 10 Categories by Sales 2026', 'By absolute sales', cw('ch-p-top', '300'))}
       ${card('↩️ Top 10 Categories by Return %', 'Highest Return Rates', cw('ch-p-ret', '300'))}
     </div>
     <div class="chart-grid cols-1" style="margin-top:20px">
@@ -896,7 +896,7 @@ function pgProducts(D) {
   `;
   setTimeout(() => {
     mkChart('ch-p-top', { type: 'bar',
-      data: { labels: top10.map(p => wrapLabel(p.product)), datasets: [{ data: top10.map(p => p[M].s26), backgroundColor: C.cyan + 'BB', borderRadius: 4 }] },
+      data: { labels: top10Cats.map(c => wrapLabel(c.category)), datasets: [{ data: top10Cats.map(c => c[M].s26), backgroundColor: C.cyan + 'BB', borderRadius: 4 }] },
       options: barOpts(true),
     });
     const pRetCats = [...cg].filter(c => c[M].s26 > 0).map(c => ({
@@ -1601,7 +1601,7 @@ function setupAuth() {
   [uInp, pInp].forEach(inp => inp.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); }));
 
   document.getElementById('logout-btn').addEventListener('click', () => {
-    localStorage.removeItem(AUTH_KEY);
+    SESSION_LOGGED_IN = false;
     location.reload();
   });
 }
