@@ -292,7 +292,7 @@ function pgHome(D) {
     </div>
     <div class="chart-grid cols-2" style="margin-top:20px">
       ${card('📈 Category Growth', '2025 vs 2026', cw('ch-h-catgrow', '280'))}
-      ${card('🎯 Achievement by Category', 'Ach % 2026', cw('ch-h-ach', '280'))}
+      ${card('↩️ Top 10 Categories by Return %', 'Highest Return Rates', cw('ch-h-ret', '280'))}
     </div>
     <div class="chart-grid cols-1" style="margin-top:20px">
       ${card('📊 Cumulative Sales', 'YTD Accumulation', cw('ch-h-cum', '300'))}
@@ -323,24 +323,29 @@ function pgHome(D) {
     mkChart('ch-h-catgrow', { type: 'bar',
       data: { labels: cats.map(c => c.category),
         datasets: [
-          { label: '2025', data: cats.map(c => c[M].s25), backgroundColor: C.blueL + 'BB', borderRadius: 3 },
-          { label: '2026', data: cats.map(c => c[M].s26), backgroundColor: cats.map(c => catColor(c.category) + 'BB'), borderRadius: 3 },
+          { label: '2025', data: cats.map(c => c[M].s25), backgroundColor: C.blueL + 'BB', borderRadius: 3, datalabels: { display: false } },
+          { label: '2026', data: cats.map(c => c[M].s26), backgroundColor: cats.map(c => catColor(c.category) + 'BB'), borderRadius: 3,
+            datalabels: {
+              formatter: (v, ctx) => fmtP(grow(cats[ctx.dataIndex][M].s26, cats[ctx.dataIndex][M].s25)),
+              color: ctx => grow(cats[ctx.dataIndex][M].s26, cats[ctx.dataIndex][M].s25) >= 0 ? C.green : C.red,
+              font: { weight: 'bold', size: 11 },
+              align: 'top', anchor: 'end'
+            }
+          },
         ] },
       options: { ...barOpts(), plugins: { legend: { position: 'top' } } },
     });
 
-    // Achievement
-    mkChart('ch-h-ach', { type: 'bar',
-      data: { labels: cats.map(c => c.category),
-        datasets: [{ data: cats.map(c => hasTgt(c[M].tgt26) ? ach(c[M].s26, c[M].tgt26) : null),
-          backgroundColor: cats.map(c => {
-            if (!hasTgt(c[M].tgt26)) return C.gray + '66';
-            const a = ach(c[M].s26, c[M].tgt26);
-            return a >= 90 ? C.green + 'CC' : a >= 70 ? C.gold + 'CC' : C.red + 'CC';
-          }),
-          borderRadius: 4,
-          datalabels: { formatter: v => v != null ? v.toFixed(1) + '%' : 'N/A' },
-        }] },
+    // Top Categories by Return %
+    const retCats = [...cats].filter(c => c[M].s26 > 0).map(c => ({
+      name: c.category,
+      rp: retP(c[M].s26, c[M].r26)
+    })).sort((a,b) => b.rp - a.rp).slice(0, 10);
+    mkChart('ch-h-ret', { type: 'bar',
+      data: { labels: retCats.map(c => c.name),
+        datasets: [{ data: retCats.map(c => c.rp),
+          backgroundColor: C.red + 'CC',
+          borderRadius: 4, datalabels: { formatter: v => v.toFixed(1) + '%' } }] },
       options: barOpts(),
     });
 
@@ -417,13 +422,12 @@ function pgProducts(D) {
   const M     = STATE.measure;
   const prods = sortData(D.product_data.filter(p => p[M].s26 > 0 || p[M].s25 > 0));
   const top10 = prods.slice(0, 10);
-  const bot10 = [...prods].filter(p => p[M].s25 > 0).sort((a, b) => grow(a[M].s26, a[M].s25) - grow(b[M].s26, b[M].s25)).slice(0, 10);
   const cg    = [...D.category_data].sort((a, b) => b[M].s26 - a[M].s26);
 
   document.getElementById('page-products').innerHTML = `
     <div class="chart-grid cols-2">
       ${card('🏆 Top 10 Products 2026', 'By absolute sales', cw('ch-p-top', '300'))}
-      ${card('📉 Bottom 10 Products', 'By growth %', cw('ch-p-bot', '300'))}
+      ${card('↩️ Top 10 Categories by Return %', 'Highest Return Rates', cw('ch-p-ret', '300'))}
     </div>
     <div class="chart-grid cols-1" style="margin-top:20px">
       ${card('📊 Category Performance', 'Sales & Achievement 2026', cw('ch-p-catsum', '300'))}
@@ -471,8 +475,15 @@ function pgProducts(D) {
       data: { labels: top10.map(p => trunc(p.product, 20)), datasets: [{ data: top10.map(p => p[M].s26), backgroundColor: C.cyan + 'BB', borderRadius: 4 }] },
       options: barOpts(true),
     });
-    mkChart('ch-p-bot', { type: 'bar',
-      data: { labels: bot10.map(p => trunc(p.product, 20)), datasets: [{ data: bot10.map(p => grow(p[M].s26, p[M].s25)), backgroundColor: C.red + 'BB', borderRadius: 4, datalabels: { formatter: v => fmtP(v) } }] },
+    const pRetCats = [...cg].filter(c => c[M].s26 > 0).map(c => ({
+      name: c.category,
+      rp: retP(c[M].s26, c[M].r26)
+    })).sort((a,b) => b.rp - a.rp).slice(0, 10);
+    mkChart('ch-p-ret', { type: 'bar',
+      data: { labels: pRetCats.map(c => c.name),
+        datasets: [{ data: pRetCats.map(c => c.rp),
+          backgroundColor: C.red + 'CC',
+          borderRadius: 4, datalabels: { formatter: v => v.toFixed(1) + '%' } }] },
       options: barOpts(true),
     });
     mkChart('ch-p-catsum', { type: 'bar',
