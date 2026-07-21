@@ -1,10 +1,18 @@
-// api/chat.js — Secure Gemini proxy using @google/generative-ai SDK
-// Frontend → POST /api/chat → Gemini gemini-2.5-flash → response
-// API key: set GeminiAPIKey in Vercel Project Settings → Environment Variables
+// api/chat.js — Secure Gemini proxy
+// Uses @google/generative-ai SDK with auto-fallback model selection.
+// Configure via Vercel Environment Variables:
+//   GeminiAPIKey  — (required) your Google AI Studio API key
+//   GeminiModel   — (optional) override model name, e.g. gemini-2.5-flash-lite
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const MODEL_NAME = 'gemini-2.5-flash';
+// Model priority list: tries each in order until one works.
+// First = preferred (fastest free-tier stable model for new API keys).
+const MODEL_PRIORITY = [
+  'gemini-2.5-flash-lite',            // stable, free tier, fast
+  'gemini-2.5-flash-preview-09-2025', // preview fallback
+  'gemini-2.5-pro',                   // pro fallback
+];
 
 // ── System prompt ─────────────────────────────────────────────
 function buildSystemPrompt(filters) {
@@ -35,7 +43,7 @@ BEHAVIOR RULES:
 10. Do not repeat the raw data back to the user — synthesize it into business insights.`;
 }
 
-// ── Retrieval: extract only the relevant data slice ───────────
+// ── Retrieval: return only the data slice relevant to the question ─
 function extractRelevantData(question, fullData) {
   if (!fullData || typeof fullData !== 'object') return {};
 
@@ -79,21 +87,36 @@ function extractRelevantData(question, fullData) {
   return out;
 }
 
+// ── Try a single model; throws on any error ───────────────────
+async function tryModel(genAI, modelName, systemPrompt, chatHistory, userMessage) {
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    systemInstruction: systemPrompt,
+  });
+  const chat   = model.startChat({ history: chatHistory });
+  const result = await chat.sendMessage(userMessage);
+  return result.response.text();
+}
+
 // ── Main handler ──────────────────────────────────────────────
 module.exports = async function handler(req, res) {
 
   // GET: safe diagnostics check
   if (req.method === 'GET') {
-    const hasKey = !!process.env.GeminiAPIKey;
-    console.log('[chat.js] Diagnostics. GeminiAPIKey present:', hasKey, '| Model:', MODEL_NAME);
+    const hasKey       = !!process.env.GeminiAPIKey;
+    const modelOverride = process.env.GeminiModel || null;
+    const activeModel  = modelOverride || MODEL_PRIORITY[0];
+    console.log('[chat.js] Diagnostics. Key present:', hasKey, '| Active model:', activeModel);
     return res.status(200).json({
-      status:  hasKey ? 'configured' : 'missing_key',
+      status:        hasKey ? 'configured' : 'missing_key',
       hasKey,
-      model:   MODEL_NAME,
-      runtime: process.version,
-      message: hasKey
-        ? `API key loaded. Model: ${MODEL_NAME}. POST to this endpoint to use AI.`
-        : 'GeminiAPIKey is not set. Add it in Vercel Project Settings → Environment Variables and redeploy.',
+      activeModel,
+      modelOverride: modelOverride || '(none, using priority list)',
+      modelPriority: MODEL_PRIORITY,
+      runtime:       process.version,
+      message:       hasKey
+        ? `Key loaded. Active model: ${activeModel}. POST to this endpoint to use AI.`
+        : 'GeminiAPIKey env var is missing. Add it in Vercel → Settings → Environment Variables, then redeploy.',
     });
   }
 
@@ -106,11 +129,9 @@ module.exports = async function handler(req, res) {
     console.error('[chat.js] GeminiAPIKey env var is not set.');
     return res.status(500).json({
       error: 'GeminiAPIKey is not configured on the server. ' +
-             'Please add it in Vercel Project Settings → Environment Variables and redeploy.',
+             'Add it in Vercel → Project Settings → Environment Variables and redeploy.',
     });
   }
-
-  console.log('[chat.js] Key present. Starting Gemini request with model:', MODEL_NAME);
 
   try {
     const { message, history = [], fullData, filters = {} } = req.body;
@@ -125,43 +146,57 @@ module.exports = async function handler(req, res) {
       ? '\n\n[DASHBOARD DATA]\n' + JSON.stringify(relevantData) + '\n[/DASHBOARD DATA]'
       : '';
 
-    // Initialise SDK
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: MODEL_NAME,
-      systemInstruction: buildSystemPrompt(filters),
-    });
+    const systemPrompt = buildSystemPrompt(filters);
+    const genAI        = new GoogleGenerativeAI(apiKey);
 
-    // Build chat history for multi-turn conversation
+    // Build chat history
     const chatHistory = (history || []).slice(-10).map(turn => ({
       role:  turn.role === 'user' ? 'user' : 'model',
       parts: [{ text: turn.text }],
     }));
 
-    // Start a chat session with history
-    const chat = model.startChat({ history: chatHistory });
+    const userMessage = message + dataContext;
 
-    // Send the new user message (with data context appended)
-    const result = await chat.sendMessage(message + dataContext);
-    const text   = result.response.text();
+    // Determine model: env override → or iterate priority list
+    const modelOverride = process.env.GeminiModel;
+    const modelsToTry   = modelOverride ? [modelOverride] : MODEL_PRIORITY;
 
-    if (!text) {
-      console.error('[chat.js] Gemini returned empty text. Response:', JSON.stringify(result.response));
-      return res.status(502).json({ error: 'Gemini returned an empty response. Please try again.' });
+    let text        = null;
+    let usedModel   = null;
+    const errors    = [];
+
+    for (const modelName of modelsToTry) {
+      try {
+        console.log('[chat.js] Trying model:', modelName);
+        text      = await tryModel(genAI, modelName, systemPrompt, chatHistory, userMessage);
+        usedModel = modelName;
+        console.log('[chat.js] Success with model:', modelName, '| Response length:', text.length);
+        break;
+      } catch (err) {
+        const msg = err.message || String(err);
+        console.warn(`[chat.js] Model ${modelName} failed:`, msg);
+        errors.push({ model: modelName, error: msg });
+        // Only continue to next model on availability/quota errors
+        const isRetryable = /not available|no longer|quota|404|503|unavailable/i.test(msg);
+        if (!isRetryable) throw err; // Re-throw unexpected errors immediately
+      }
     }
 
-    console.log('[chat.js] Gemini responded successfully. Length:', text.length);
-    return res.status(200).json({ reply: text });
+    if (!text) {
+      console.error('[chat.js] All models failed:', errors);
+      return res.status(502).json({
+        error:  'All Gemini models failed. Please try again later.',
+        models: errors,
+      });
+    }
+
+    return res.status(200).json({ reply: text, model: usedModel });
 
   } catch (err) {
-    // The SDK throws structured errors — expose them for debugging
-    console.error('[chat.js] Error calling Gemini:', err.message || err);
-    const status  = err.status || err.httpStatus || 500;
-    const details = err.errorDetails || err.message || String(err);
-    return res.status(status >= 400 && status < 600 ? status : 502).json({
+    console.error('[chat.js] Unhandled error:', err.message || err);
+    return res.status(502).json({
       error:   `Gemini error: ${err.message || 'Unknown error'}`,
-      details,
-      model:   MODEL_NAME,
+      details: err.errorDetails || err.message || String(err),
     });
   }
 };
