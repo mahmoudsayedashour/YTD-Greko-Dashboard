@@ -1,18 +1,10 @@
 // api/chat.js — Secure Gemini proxy
-// Uses @google/generative-ai SDK with auto-fallback model selection.
+// Uses @google/generative-ai SDK. Dynamically queries available models to ensure compatibility.
 // Configure via Vercel Environment Variables:
 //   GeminiAPIKey  — (required) your Google AI Studio API key
 //   GeminiModel   — (optional) override model name, e.g. gemini-2.5-flash-lite
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-
-// Model priority list: tries each in order until one works.
-// First = preferred (fastest free-tier stable model for new API keys).
-const MODEL_PRIORITY = [
-  'gemini-2.5-flash-lite',            // stable, free tier, fast
-  'gemini-2.5-flash-preview-09-2025', // preview fallback
-  'gemini-2.5-pro',                   // pro fallback
-];
 
 // ── System prompt ─────────────────────────────────────────────
 function buildSystemPrompt(filters) {
@@ -90,12 +82,44 @@ function extractRelevantData(question, fullData) {
 // ── Try a single model; throws on any error ───────────────────
 async function tryModel(genAI, modelName, systemPrompt, chatHistory, userMessage) {
   const model = genAI.getGenerativeModel({
-    model: modelName,
+    model: modelName.replace(/^models\//, ''), // Ensure we just use the name part
     systemInstruction: systemPrompt,
   });
   const chat   = model.startChat({ history: chatHistory });
   const result = await chat.sendMessage(userMessage);
   return result.response.text();
+}
+
+// ── Dynamically fetch available models ────────────────────────
+async function getAvailableModels(apiKey) {
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (!res.ok) {
+      console.error('[chat.js] Failed to fetch models list. Status:', res.status);
+      return [];
+    }
+    const data = await res.json();
+    if (!data.models) return [];
+    
+    // Filter for models that support text generation (generateContent)
+    const supported = data.models
+      .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
+      .map(m => m.name.replace(/^models\//, '')); // Strip 'models/' prefix
+      
+    // Sort logic to prefer flash/lite models if we want, or just return as-is.
+    // For safety, let's just return the list directly, putting anything with "flash" or "lite" at the top optionally.
+    // However, the prompt says "automatically use the first available model" so we'll just return the array.
+    
+    // To ensure a good model is picked first if available, we'll sort flash to top
+    return supported.sort((a, b) => {
+      const aScore = (a.includes('flash') ? 2 : 0) + (a.includes('lite') ? 1 : 0) - (a.includes('vision') ? 10 : 0);
+      const bScore = (b.includes('flash') ? 2 : 0) + (b.includes('lite') ? 1 : 0) - (b.includes('vision') ? 10 : 0);
+      return bScore - aScore; // higher score first
+    });
+  } catch (err) {
+    console.error('[chat.js] Error fetching models list:', err);
+    return [];
+  }
 }
 
 // ── Main handler ──────────────────────────────────────────────
@@ -105,17 +129,13 @@ module.exports = async function handler(req, res) {
   if (req.method === 'GET') {
     const hasKey       = !!process.env.GeminiAPIKey;
     const modelOverride = process.env.GeminiModel || null;
-    const activeModel  = modelOverride || MODEL_PRIORITY[0];
-    console.log('[chat.js] Diagnostics. Key present:', hasKey, '| Active model:', activeModel);
     return res.status(200).json({
       status:        hasKey ? 'configured' : 'missing_key',
       hasKey,
-      activeModel,
-      modelOverride: modelOverride || '(none, using priority list)',
-      modelPriority: MODEL_PRIORITY,
+      modelOverride: modelOverride || '(none, will fetch dynamically)',
       runtime:       process.version,
       message:       hasKey
-        ? `Key loaded. Active model: ${activeModel}. POST to this endpoint to use AI.`
+        ? `Key loaded. POST to this endpoint to use AI.`
         : 'GeminiAPIKey env var is missing. Add it in Vercel → Settings → Environment Variables, then redeploy.',
     });
   }
@@ -157,9 +177,19 @@ module.exports = async function handler(req, res) {
 
     const userMessage = message + dataContext;
 
-    // Determine model: env override → or iterate priority list
+    // Determine model: env override → or dynamically fetch
     const modelOverride = process.env.GeminiModel;
-    const modelsToTry   = modelOverride ? [modelOverride] : MODEL_PRIORITY;
+    let modelsToTry = [];
+    
+    if (modelOverride) {
+      modelsToTry = [modelOverride];
+    } else {
+      modelsToTry = await getAvailableModels(apiKey);
+      if (modelsToTry.length === 0) {
+        // Fallback if the dynamic fetch fails for some reason
+        modelsToTry = ['gemini-2.5-flash-lite', 'gemini-1.5-flash'];
+      }
+    }
 
     let text        = null;
     let usedModel   = null;
@@ -170,23 +200,48 @@ module.exports = async function handler(req, res) {
         console.log('[chat.js] Trying model:', modelName);
         text      = await tryModel(genAI, modelName, systemPrompt, chatHistory, userMessage);
         usedModel = modelName;
-        console.log('[chat.js] Success with model:', modelName, '| Response length:', text.length);
+        console.log('[chat.js] Success with model:', modelName);
         break;
       } catch (err) {
+        const status = err.status || err.httpStatus || 'Unknown HTTP Status';
         const msg = err.message || String(err);
+        const details = err.errorDetails ? JSON.stringify(err.errorDetails) : msg;
+        
         console.warn(`[chat.js] Model ${modelName} failed:`, msg);
-        errors.push({ model: modelName, error: msg });
-        // Only continue to next model on availability/quota errors
-        const isRetryable = /not available|no longer|quota|404|503|unavailable/i.test(msg);
-        if (!isRetryable) throw err; // Re-throw unexpected errors immediately
+        
+        errors.push({
+          model: modelName,
+          status: status,
+          message: msg,
+          details: details
+        });
+        
+        // Only continue to next model on availability/quota/404 errors
+        const isRetryable = /not available|no longer|quota|404|503|unavailable|not found/i.test(msg);
+        if (!isRetryable && modelOverride) {
+            // If explicit model override fails with an unretryable error, stop.
+            break; 
+        }
+        // If not retryable but we are iterating dynamically, we still try the next one
+        // in case one model is completely broken but another works.
       }
     }
 
     if (!text) {
-      console.error('[chat.js] All models failed:', errors);
+      console.error('[chat.js] All models failed.');
+      
+      // Format the error string exactly as requested by user
+      let formattedErrors = "All Gemini models failed. Please try again later.\n\nError details:\n";
+      errors.forEach(e => {
+        formattedErrors += `\n${e.model}\n→ ${e.status}\n→ ${e.message}\n`;
+        if (e.details && e.details !== e.message) {
+            formattedErrors += `→ ${e.details}\n`;
+        }
+      });
+      
       return res.status(502).json({
-        error:  'All Gemini models failed. Please try again later.',
-        models: errors,
+        error: formattedErrors,
+        rawErrors: errors
       });
     }
 
