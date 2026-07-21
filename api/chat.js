@@ -171,10 +171,15 @@ module.exports = async function handler(req, res) {
     const genAI        = new GoogleGenerativeAI(apiKey);
 
     // Build chat history
-    const chatHistory = (history || []).slice(-10).map(turn => ({
+    let chatHistory = (history || []).slice(-10).map(turn => ({
       role:  turn.role === 'user' ? 'user' : 'model',
       parts: [{ text: turn.text }],
     }));
+
+    // Ensure first message is from 'user' (Gemini requirement)
+    while (chatHistory.length > 0 && chatHistory[0].role === 'model') {
+      chatHistory.shift();
+    }
 
     const userMessage = message + dataContext;
 
