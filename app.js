@@ -1721,16 +1721,22 @@ document.readyState === 'loading'
   let AI_RENDERED = false;
 
   const CHIPS = [
-    { label: '\U0001f4c4 Executive Summary',          prompt: 'Give me a professional executive summary of the current business performance.' },
-    { label: '\U0001f4c8 Compare 2025 vs 2026',       prompt: 'Compare sales performance between 2025 and 2026 across all categories and channels.' },
-    { label: '\U0001f3c6 Top Customers',              prompt: 'Who are the top 10 customers by sales volume in 2026?' },
-    { label: '\U0001f4e6 Top Categories',             prompt: 'Which product categories have the highest sales and best growth in 2026?' },
-    { label: '\U0001f6d2 Top SKUs',                   prompt: 'What are the top 10 best-selling SKUs in 2026?' },
-    { label: '\U0001f4c9 Highest Returns',            prompt: 'Which products, categories, or customers have the highest return rates?' },
-    { label: '\U0001f4ca Growth Analysis',            prompt: 'Analyze growth trends across all categories and channels. Highlight winners and laggards.' },
-    { label: '\U0001f4a1 Business Recommendations',   prompt: 'Based on the current data, what specific business actions do you recommend to management?' },
-    { label: '\U0001f4e7 Generate Monthly Email',     prompt: "Draft a professional management email summarizing this month's sales performance, highlights, and action items." },
-    { label: '\U0001f4cb Generate Management Report', prompt: 'Generate a structured management report including executive KPIs, category performance, channel breakdown, top customers, and recommended actions.' },
+    { label: 'Executive Summary', prompt: 'Give me an executive summary of the current data.' },
+    { label: 'Monthly Performance', prompt: 'Analyze the monthly performance trends.' },
+    { label: 'Compare Categories', prompt: 'Compare sales across different categories.' },
+    { label: 'Top Customers', prompt: 'Who are our top customers?' },
+    { label: 'Top Products', prompt: 'What are the top selling products?' },
+    { label: 'Return Analysis', prompt: 'Analyze the product returns.' },
+    { label: 'Growth Analysis', prompt: 'Provide a growth analysis.' },
+    { label: 'Sales Forecast', prompt: 'What is the sales forecast based on this data?' },
+    { label: 'Business Risks', prompt: 'Identify key business risks in this data.' },
+    { label: 'Management Report', prompt: 'Draft a short management report.' },
+    { label: 'Action Plan', prompt: 'Suggest an action plan.' },
+    { label: 'Generate Email', prompt: 'Generate an email to the sales team summarizing this data.' },
+    { label: 'Generate PowerPoint Summary', prompt: 'Generate bullet points for a PowerPoint presentation.' },
+    { label: 'Generate Meeting Notes', prompt: 'Generate meeting notes discussing these results.' },
+    { label: 'Generate Executive Insights', prompt: 'Give me the top 3 executive insights.' },
+    { label: '📑 Generate Executive Report', prompt: 'Generate a professional management report containing:\\n- Executive Summary\\n- KPI Highlights\\n- Best Performers\\n- Weak Performers\\n- Risks\\n- Opportunities\\n- Recommended Actions\\n- Conclusion' }
   ];
 
   /* ── Simple Markdown → HTML renderer ───────────────────────── */
@@ -1755,49 +1761,20 @@ document.readyState === 'loading'
   }
 
   function renderMarkdown(text) {
-    // 1. Protect code blocks
-    const codeBlocks = [];
-    text = text.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) => {
-      codeBlocks.push(`<pre><code>${escHtml(code.trim())}</code></pre>`);
-      return `\x00CODE${codeBlocks.length - 1}\x00`;
+    if (!text) return '';
+    // Strip weird artifacts
+    text = text.replace(/^---$/gm, '');
+    text = text.replace(/U([0-9A-Fa-f]{4,8})/gi, (m, g) => {
+       try { return String.fromCodePoint(parseInt(g, 16)); } catch(e) { return m; }
     });
-    // 2. Inline code
-    text = text.replace(/`([^`\n]+)`/g, (_, c) => `<code>${escHtml(c)}</code>`);
-    // 3. Bold / Italic
-    text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    text = text.replace(/__(.+?)__/g, '<strong>$1</strong>');
-    text = text.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
-    // 4. Headings
-    text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-    text = text.replace(/^## (.+)$/gm,  '<h2>$1</h2>');
-    text = text.replace(/^# (.+)$/gm,   '<h1>$1</h1>');
-    // 5. Tables (detect | blocks)
-    text = text.replace(/^(\|.+\|\n?)+/gm, m => parseTable(m));
-    // 6. Lists
-    text = text.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
-    text = text.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-    // Wrap consecutive <li> in <ul>
-    text = text.replace(/(<li>[\s\S]+?<\/li>\n?)+/g, s => `<ul>${s}</ul>`);
-    // 7. Paragraphs
-    const lines = text.split('\n');
-    const result = [];
-    let buf = [];
-    for (const line of lines) {
-      if (line.trim() === '') {
-        if (buf.length) { result.push(`<p>${buf.join(' ')}</p>`); buf = []; }
-      } else if (/^<[hup\x00]/.test(line.trim())) {
-        if (buf.length) { result.push(`<p>${buf.join(' ')}</p>`); buf = []; }
-        result.push(line);
-      } else {
-        buf.push(line);
-      }
+    // Use marked library
+    let html = '';
+    if (window.marked) {
+        html = marked.parse(text);
+    } else {
+        html = text; // Fallback
     }
-    if (buf.length) result.push(`<p>${buf.join(' ')}</p>`);
-    text = result.join('\n');
-    // 8. Restore code blocks
-    codeBlocks.forEach((cb, i) => { text = text.replace(`\x00CODE${i}\x00`, cb); });
-    return text;
+    return html;
   }
 
   /* ── DOM helpers ────────────────────────────────────────────── */
@@ -1814,8 +1791,14 @@ document.readyState === 'loading'
 
     const isUser = (role === 'user');
     const avatar  = isUser ? '\U0001f464' : '\U0001f916';
-    const copyBtn = isUser ? '' :
-      `<button class="ai-copy-btn" onclick="window.aiCopyMsg(this)" title="Copy response">\U0001f4cb Copy</button>`;
+    const copyBtn = isUser ? '' : `
+      <div class="ai-export-group">
+        <button class="ai-copy-btn" onclick="window.aiCopyMsg(this)" title="Copy">\u{1F4CB} Copy</button>
+        <button class="ai-copy-btn" onclick="window.aiExportPdf(this)" title="Export PDF">📄 PDF</button>
+        <button class="ai-copy-btn" onclick="window.aiExportWord(this)" title="Export Word">📝 Word</button>
+        <button class="ai-copy-btn" onclick="window.aiDownloadMd(this)" title="Download Markdown">📥 Markdown</button>
+      </div>
+    `;
 
     const wrap = document.createElement('div');
     wrap.className = `ai-msg ${role}`;
@@ -1831,7 +1814,15 @@ document.readyState === 'loading'
 
   function setTyping(on) {
     const typing = document.getElementById('ai-typing-row');
-    if (typing) typing.style.display = on ? 'flex' : 'none';
+    if (typing) {
+      typing.style.display = on ? 'flex' : 'none';
+      typing.innerHTML = `
+        <div class="ai-msg-avatar">\u{1F916}</div>
+        <div class="ai-msg-bubble" style="display:flex;align-items:center;">
+            <div class="inline-loader"></div> <span style="font-size:14px;color:var(--text-muted);">Processing...</span>
+        </div>
+      `;
+    }
     const btn = document.getElementById('ai-send-btn');
     if (btn) btn.disabled = on;
     AI_LOADING = on;
@@ -2001,16 +1992,100 @@ document.readyState === 'loading'
     }
   };
 
-  window.aiCopyMsg = function (btn) {
+  window.aiCopyMsg = function(btn) {
     const bubble = btn.closest('.ai-msg-bubble');
-    const text = bubble ? (bubble.innerText || bubble.textContent).replace('\U0001f4cb Copy', '').trim() : '';
-    navigator.clipboard.writeText(text).then(() => {
-      btn.textContent = '\u2705 Copied';
-      setTimeout(() => { btn.innerHTML = '\U0001f4cb Copy'; }, 2000);
-    }).catch(() => {
-      btn.textContent = 'Failed';
-      setTimeout(() => { btn.innerHTML = '\U0001f4cb Copy'; }, 2000);
+    const clone = bubble.cloneNode(true);
+    const btns = clone.querySelector('.ai-export-group');
+    if (btns) btns.remove();
+    const textToCopy = clone.innerText || clone.textContent;
+    navigator.clipboard.writeText(textToCopy).then(() => {
+        showToast('Copied to clipboard');
+    }).catch(err => {
+        console.error('Could not copy text: ', err);
+        showToast('Failed to copy', 'error');
     });
+  };
+
+  // ═══════════════════ AI EXPORT FUNCTIONS ═══════════════════
+  window.aiExportPdf = function(btn) {
+    const bubble = btn.closest('.ai-msg-bubble');
+    const clone = bubble.cloneNode(true);
+    const btns = clone.querySelector('.ai-export-group');
+    if (btns) btns.remove();
+    
+    const wrapper = document.createElement('div');
+    wrapper.style.padding = '40px';
+    wrapper.style.fontFamily = 'Inter, sans-serif';
+    wrapper.innerHTML = `
+        <h1 style="color:#00e676; margin-bottom: 5px;">Greko Egypt</h1>
+        <h3 style="color:#555; margin-top: 0;">AI Business Assistant Report</h3>
+        <p style="color:#888; font-size:12px;">Generated: ${new Date().toLocaleString()}</p>
+        <hr style="border:1px solid #eee; margin-bottom:20px;">
+        <div style="font-size:14px; line-height:1.6; color:#000;">
+            ${clone.innerHTML}
+        </div>
+        <hr style="border:1px solid #eee; margin-top:40px;">
+        <p style="color:#888; font-size:10px; text-align:center;">Generated by Greko Egypt AI Business Assistant</p>
+    `;
+    
+    html2pdf().set({
+        margin: 10,
+        filename: 'AI_Report.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    }).from(wrapper).save().then(() => showToast('AI Report exported as PDF'));
+  };
+
+  window.aiExportWord = function(btn) {
+    const bubble = btn.closest('.ai-msg-bubble');
+    const clone = bubble.cloneNode(true);
+    const btns = clone.querySelector('.ai-export-group');
+    if (btns) btns.remove();
+    
+    const html = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head><meta charset='utf-8'><title>Export HTML To Doc</title></head><body>
+      <h1 style="color:#00e676;">Greko Egypt</h1>
+      <h3>AI Business Assistant Report</h3>
+      <p><small>Generated: ${new Date().toLocaleString()}</small></p>
+      <hr>
+      ${clone.innerHTML}
+      <hr>
+      <p><small>Generated by Greko Egypt AI Business Assistant</small></p>
+      </body></html>
+    `;
+    
+    const blob = new Blob(['\\ufeff', html], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'AI_Report.doc';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast('AI Report exported as Word');
+  };
+
+  window.aiDownloadMd = function(btn) {
+    const msgDiv = btn.closest('.ai-msg');
+    const allMsgs = document.querySelectorAll('.ai-msg.assistant');
+    const index = Array.from(allMsgs).indexOf(msgDiv);
+    
+    const assistantMsgs = AI_HISTORY.filter(m => m.role === 'assistant');
+    const text = assistantMsgs[index] ? assistantMsgs[index].text : 'Markdown not found.';
+    
+    const blob = new Blob([text], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'AI_Response.md';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast('AI Report downloaded as Markdown');
   };
 
 }());
