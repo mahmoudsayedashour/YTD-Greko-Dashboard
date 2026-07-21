@@ -575,7 +575,8 @@ const PAGE_TITLES = {
   customers: 'Customer Analysis',
   channels:  'Channel Analysis',
   returns:   'Returns Analysis',
-  growth:    'Growth Analysis'
+  growth:    'Growth Analysis',
+  ai:        '🤖 AI Business Assistant'
 };
 
 function go(page) {
@@ -600,8 +601,9 @@ function renderPage() {
     case 'channels':  pgChannels(D);  break;
     case 'returns':   pgReturns(D);   break;
     case 'growth':    pgGrowth(D);    break;
+    case 'ai':        pgAiAssistant(); break;
   }
-  attachSort();
+  if (STATE.page !== 'ai') attachSort();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1706,3 +1708,290 @@ function init() {
 document.readyState === 'loading'
   ? document.addEventListener('DOMContentLoaded', init)
   : init();
+
+// ---------------------------------------------------------------
+// AI BUSINESS ASSISTANT PAGE
+// ---------------------------------------------------------------
+(function () {
+  // -- State --------------------------------------------------
+  let AI_HISTORY   = [];          // { role, text, time }
+  let AI_LOADING   = false;
+  let AI_RENDERED  = false;       // page already in DOM?
+
+  const CHIPS = [
+    { label: '?? Executive Summary',           prompt: 'Give me an executive summary of the current business performance.' },
+    { label: '?? Compare 2025 vs 2026',        prompt: 'Compare sales performance between 2025 and 2026.' },
+    { label: '?? Top Customers',               prompt: 'Who are the top 10 customers by sales in 2026?' },
+    { label: '?? Top Categories',             prompt: 'Which categories have the highest sales and growth in 2026?' },
+    { label: '?? Top SKUs',                    prompt: 'What are the top 10 selling SKUs in 2026?' },
+    { label: '?? Highest Returns',             prompt: 'Which products or customers have the highest return rates?' },
+    { label: '?? Growth Analysis',             prompt: 'Analyze the growth trends across categories and channels.' },
+    { label: '?? Business Recommendations',    prompt: 'Based on the current data, what business actions do you recommend?' },
+    { label: '?? Generate Monthly Email',      prompt: 'Draft a professional email summarizing this month\'s performance for management.' },
+    { label: '?? Generate Management Report',  prompt: 'Generate a structured management report with KPIs, highlights, and action items.' },
+  ];
+
+  // -- Simple Markdown renderer --------------------------------
+  function renderMarkdown(text) {
+    return text
+      // Code blocks
+      .replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) =>
+        `<pre><code>${escHtml(code.trim())}</code></pre>`)
+      // Inline code
+      .replace(/`([^`]+)`/g, (_, c) => `<code>${escHtml(c)}</code>`)
+      // Bold
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      // Italic
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      // Tables  |col|col|
+      .replace(/(\|.+\|\n?)+/g, matchTable)
+      // Headings
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm,  '<h2>$1</h2>')
+      .replace(/^# (.+)$/gm,   '<h1>$1</h1>')
+      // Unordered list
+      .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
+      .replace(/(<li>.*<\/li>\n?)+/g, s => `<ul>${s}</ul>`)
+      // Ordered list
+      .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+      // Double newline ? paragraph
+      .replace(/\n{2,}/g, '</p><p>')
+      .replace(/^/, '<p>').replace(/$/, '</p>')
+      // Tidy up
+      .replace(/<p><\/p>/g, '')
+      .replace(/<p>(<[hup])/g, '$1')
+      .replace(/(<\/[hup][^>]*>)<\/p>/g, '$1');
+  }
+
+  function escHtml(t) {
+    return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function matchTable(block) {
+    const rows = block.trim().split('\n').filter(r => r.includes('|'));
+    if (rows.length < 2) return block;
+    const headers = rows[0].split('|').map(h => h.trim()).filter(Boolean);
+    const body    = rows.slice(2);                                       // skip separator row
+    const ths = headers.map(h => `<th>${h}</th>`).join('');
+    const trs = body.map(r => {
+      const cells = r.split('|').map(c => c.trim()).filter(Boolean);
+      return `<tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>`;
+    }).join('');
+    return `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+  }
+
+  // -- DOM helpers ---------------------------------------------
+  function now() {
+    return new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  }
+
+  function appendMsg(role, html, timeStr) {
+    const msgsEl = document.getElementById('ai-messages-list');
+    if (!msgsEl) return;
+    const isUser = role === 'user';
+
+    // Remove empty state if present
+    const empty = msgsEl.querySelector('.ai-empty');
+    if (empty) empty.remove();
+
+    const avatar  = isUser ? '??' : '??';
+    const copyBtn = isUser ? '' :
+      `<button class="ai-copy-btn" onclick="aiCopyMsg(this)" title="Copy">?? Copy</button>`;
+
+    const div = document.createElement('div');
+    div.className = `ai-msg ${role}`;
+    div.innerHTML = `
+      <div class="ai-msg-avatar">${avatar}</div>
+      <div style="display:flex;flex-direction:column;gap:3px;max-width:100%">
+        <div class="ai-msg-bubble">${html}${copyBtn}</div>
+        <div class="ai-msg-time">${timeStr}</div>
+      </div>`;
+    msgsEl.appendChild(div);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+
+  function setTyping(on) {
+    const t = document.getElementById('ai-typing');
+    if (t) t.classList.toggle('visible', on);
+    const s = document.getElementById('ai-send-btn');
+    if (s) s.disabled = on;
+    AI_LOADING = on;
+  }
+
+  // -- Send a message to the backend ---------------------------
+  async function sendMessage(userText) {
+    if (!userText.trim() || AI_LOADING) return;
+
+    const t = now();
+    AI_HISTORY.push({ role: 'user', text: userText, time: t });
+    appendMsg('user', escHtml(userText), t);
+
+    // Clear input
+    const inp = document.getElementById('ai-input');
+    if (inp) { inp.value = ''; inp.style.height = 'auto'; }
+
+    setTyping(true);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message:  userText,
+          history:  AI_HISTORY.slice(-8).map(h => ({ role: h.role === 'user' ? 'user' : 'model', text: h.text })),
+          fullData: STATE.data,
+          filters:  {
+            period:   STATE.period,
+            measure:  STATE.measure,
+            channel:  STATE.chFilter  || 'All Channels',
+            category: STATE.caFilter  || 'All Categories',
+          },
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || json.error) {
+        throw new Error(json.error || 'Server error');
+      }
+
+      const aiT = now();
+      AI_HISTORY.push({ role: 'assistant', text: json.reply, time: aiT });
+      appendMsg('assistant', renderMarkdown(json.reply), aiT);
+
+    } catch (err) {
+      const errT = now();
+      const errMsg = `?? **Error:** ${err.message || 'Unable to reach the AI service. Please check your connection.'}`;
+      AI_HISTORY.push({ role: 'assistant', text: errMsg, time: errT });
+      appendMsg('assistant', renderMarkdown(errMsg), errT);
+    } finally {
+      setTyping(false);
+      const msgsEl = document.getElementById('ai-messages-list');
+      if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
+    }
+  }
+
+  // -- Render the page (idempotent) ----------------------------
+  window.pgAiAssistant = function () {
+    const container = document.getElementById('page-ai');
+    if (!container) return;
+
+    if (AI_RENDERED) {
+      // Page already built � just scroll to bottom
+      const ml = document.getElementById('ai-messages-list');
+      if (ml) ml.scrollTop = ml.scrollHeight;
+      return;
+    }
+    AI_RENDERED = true;
+
+    const chipsHtml = CHIPS.map(c =>
+      `<button class="ai-chip" onclick="window.aiChipClick('${c.prompt.replace(/'/g,"&#39;")}')">${c.label}</button>`
+    ).join('');
+
+    const emptyState = `
+      <div class="ai-empty">
+        <div class="ai-empty-icon">??</div>
+        <div class="ai-empty-title">Ask me anything about the dashboard</div>
+        <div class="ai-empty-sub">I analyze your sales data and provide professional business insights in real-time.</div>
+      </div>`;
+
+    container.innerHTML = `
+      <div class="ai-page">
+
+        <!-- Header -->
+        <div class="ai-header">
+          <div class="ai-header-top">
+            <div class="ai-title">
+              <div class="ai-title-icon">??</div>
+              <div class="ai-title-text">
+                <h2>AI Business Assistant</h2>
+                <p>Powered by Google Gemini � Senior Business Analyst</p>
+              </div>
+            </div>
+            <div class="ai-status">
+              <div class="ai-status-dot"></div>
+              AI Online
+            </div>
+          </div>
+          <div class="ai-chips">${chipsHtml}</div>
+        </div>
+
+        <!-- Messages -->
+        <div class="ai-messages" id="ai-messages-list">
+          ${emptyState}
+        </div>
+
+        <!-- Typing -->
+        <div class="ai-typing" id="ai-typing" style="padding:0 24px 8px;display:none">
+          <div class="ai-msg-avatar">??</div>
+          <div class="ai-typing-dots">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+        <div id="ai-typing" class="ai-typing" style="padding:0 24px 8px"></div>
+
+        <!-- Input -->
+        <div class="ai-input-bar">
+          <div class="ai-input-row">
+            <div class="ai-input-wrap">
+              <textarea id="ai-input" placeholder="Ask any business question� e.g. Why did sales drop in Q1?" rows="1"></textarea>
+            </div>
+            <button id="ai-send-btn" class="ai-send-btn" onclick="window.aiSend()">
+              ? Send
+            </button>
+            <button class="ai-clear-btn" onclick="window.aiClear()" title="Clear conversation">??</button>
+          </div>
+          <div class="ai-input-hint">Press Enter to send � Shift+Enter for new line</div>
+        </div>
+
+      </div>`;
+
+    // Auto-resize textarea + Enter key
+    const inp = document.getElementById('ai-input');
+    if (inp) {
+      inp.addEventListener('input', () => {
+        inp.style.height = 'auto';
+        inp.style.height = Math.min(inp.scrollHeight, 120) + 'px';
+      });
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          window.aiSend();
+        }
+      });
+    }
+  };
+
+  // -- Global handlers (called from inline onclick) -------------
+  window.aiSend = function () {
+    const inp = document.getElementById('ai-input');
+    if (inp) sendMessage(inp.value.trim());
+  };
+
+  window.aiChipClick = function (prompt) {
+    sendMessage(prompt);
+  };
+
+  window.aiClear = function () {
+    AI_HISTORY = [];
+    const msgsEl = document.getElementById('ai-messages-list');
+    if (msgsEl) {
+      msgsEl.innerHTML = `
+        <div class="ai-empty">
+          <div class="ai-empty-icon">??</div>
+          <div class="ai-empty-title">Conversation cleared</div>
+          <div class="ai-empty-sub">Ask me anything about the dashboard data.</div>
+        </div>`;
+    }
+  };
+
+  window.aiCopyMsg = function (btn) {
+    const bubble = btn.closest('.ai-msg-bubble');
+    const text = bubble ? bubble.innerText.replace('?? Copy', '').trim() : '';
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = '? Copied';
+      setTimeout(() => { btn.innerHTML = '?? Copy'; }, 2000);
+    });
+  };
+
+}());
