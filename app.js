@@ -1,3 +1,110 @@
+
+// ═══════════════════ TOAST NOTIFICATIONS ═══════════════════
+function showToast(message, type = 'success') {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement('div');
+  toast.className = 'toast ' + (type === 'error' ? 'error' : '');
+  const icon = type === 'error' ? '❌' : '✅';
+  toast.innerHTML = `<span class="toast-icon">${icon}</span> <span>${message}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.animation = 'toast-slide-out 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// ═══════════════════ EXPORT UTILITIES ═══════════════════
+function attachExportToolbars(container) {
+  const tables = container.querySelectorAll('table.data-table');
+  tables.forEach(table => {
+    if (table.previousElementSibling && table.previousElementSibling.classList.contains('export-toolbar')) return;
+    const toolbar = document.createElement('div');
+    toolbar.className = 'export-toolbar';
+    toolbar.innerHTML = `
+      <button class="export-btn pdf">📄 PDF</button>
+      <button class="export-btn excel">📊 Excel</button>
+    `;
+    table.parentNode.insertBefore(toolbar, table);
+
+    toolbar.querySelector('.excel').addEventListener('click', () => {
+      exportTableToExcel(table, (document.getElementById('page-title')?.innerText || 'Export'));
+    });
+    toolbar.querySelector('.pdf').addEventListener('click', () => {
+      exportTableToPDF(table, (document.getElementById('page-title')?.innerText || 'Export'));
+    });
+  });
+}
+
+function exportTableToExcel(table, title) {
+  try {
+    const clone = table.cloneNode(true);
+    clone.querySelectorAll('.nested-row').forEach(el => el.remove());
+    clone.querySelectorAll('.expand-icon').forEach(el => el.remove());
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.table_to_sheet(clone, { raw: true });
+    XLSX.utils.book_append_sheet(wb, ws, "Data");
+    XLSX.writeFile(wb, title + '.xlsx');
+    showToast('Excel exported successfully');
+  } catch (err) {
+    console.error(err);
+    showToast('Export failed', 'error');
+  }
+}
+
+function exportTableToPDF(table, title) {
+  try {
+    const clone = table.cloneNode(true);
+    clone.querySelectorAll('.nested-row').forEach(el => el.remove());
+    clone.querySelectorAll('.expand-icon').forEach(el => el.remove());
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('landscape');
+    
+    // Add title
+    doc.setFontSize(14);
+    doc.text(title, 14, 15);
+    
+    // Add date
+    doc.setFontSize(10);
+    doc.setTextColor(150);
+    const dateStr = 'Generated: ' + new Date().toLocaleString();
+    doc.text(dateStr, 14, 22);
+
+    doc.autoTable({
+      html: clone,
+      startY: 26,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [0, 230, 118], textColor: [0,0,0] },
+      theme: 'grid'
+    });
+    
+    doc.save(title + '.pdf');
+    showToast('PDF generated successfully');
+  } catch (err) {
+    console.error(err);
+    showToast('Export failed', 'error');
+  }
+}
+
+// Global observer to attach toolbars to any new data-table
+const observer = new MutationObserver((mutations) => {
+  mutations.forEach(m => {
+    if (m.addedNodes.length) {
+      document.querySelectorAll('.page.active').forEach(attachExportToolbars);
+    }
+  });
+});
+// Wait for DOM
+window.addEventListener('DOMContentLoaded', () => {
+    observer.observe(document.body, { childList: true, subtree: true });
+});
+
 /* ============================================================
    GREKO EGYPT – YTD SALES DASHBOARD  •  app.js  (v4)
    Single global state, server-side data, full DAX pipeline.
@@ -1795,8 +1902,6 @@ document.readyState === 'loading'
       <div class="ai-export-group">
         <button class="ai-copy-btn" onclick="window.aiCopyMsg(this)" title="Copy">\u{1F4CB} Copy</button>
         <button class="ai-copy-btn" onclick="window.aiExportPdf(this)" title="Export PDF">📄 PDF</button>
-        <button class="ai-copy-btn" onclick="window.aiExportWord(this)" title="Export Word">📝 Word</button>
-        <button class="ai-copy-btn" onclick="window.aiDownloadMd(this)" title="Download Markdown">📥 Markdown</button>
       </div>
     `;
 
@@ -2035,57 +2140,6 @@ document.readyState === 'loading'
         html2canvas: { scale: 2 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     }).from(wrapper).save().then(() => showToast('AI Report exported as PDF'));
-  };
-
-  window.aiExportWord = function(btn) {
-    const bubble = btn.closest('.ai-msg-bubble');
-    const clone = bubble.cloneNode(true);
-    const btns = clone.querySelector('.ai-export-group');
-    if (btns) btns.remove();
-    
-    const html = `
-      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-      <head><meta charset='utf-8'><title>Export HTML To Doc</title></head><body>
-      <h1 style="color:#00e676;">Greko Egypt</h1>
-      <h3>AI Business Assistant Report</h3>
-      <p><small>Generated: ${new Date().toLocaleString()}</small></p>
-      <hr>
-      ${clone.innerHTML}
-      <hr>
-      <p><small>Generated by Greko Egypt AI Business Assistant</small></p>
-      </body></html>
-    `;
-    
-    const blob = new Blob(['\\ufeff', html], { type: 'application/msword' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'AI_Report.doc';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    showToast('AI Report exported as Word');
-  };
-
-  window.aiDownloadMd = function(btn) {
-    const msgDiv = btn.closest('.ai-msg');
-    const allMsgs = document.querySelectorAll('.ai-msg.assistant');
-    const index = Array.from(allMsgs).indexOf(msgDiv);
-    
-    const assistantMsgs = AI_HISTORY.filter(m => m.role === 'assistant');
-    const text = assistantMsgs[index] ? assistantMsgs[index].text : 'Markdown not found.';
-    
-    const blob = new Blob([text], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'AI_Response.md';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    showToast('AI Report downloaded as Markdown');
   };
 
 }());
