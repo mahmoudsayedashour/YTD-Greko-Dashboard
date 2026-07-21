@@ -1874,14 +1874,49 @@ document.readyState === 'loading'
     text = text.replace(/U([0-9A-Fa-f]{4,8})/gi, (m, g) => {
        try { return String.fromCodePoint(parseInt(g, 16)); } catch(e) { return m; }
     });
-    // Use marked library
-    let html = '';
-    if (window.marked) {
-        html = marked.parse(text);
-    } else {
-        html = text; // Fallback
+    // 1. Protect code blocks
+    const codeBlocks = [];
+    text = text.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) => {
+      codeBlocks.push(`<pre><code>${escHtml(code.trim())}</code></pre>`);
+      return `\x00CODE${codeBlocks.length - 1}\x00`;
+    });
+    // 2. Inline code
+    text = text.replace(/`([^`\n]+)`/g, (_, c) => `<code>${escHtml(c)}</code>`);
+    // 3. Bold / Italic
+    text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    text = text.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+    // 4. Headings
+    text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    text = text.replace(/^## (.+)$/gm,  '<h2>$1</h2>');
+    text = text.replace(/^# (.+)$/gm,   '<h1>$1</h1>');
+    // 5. Tables (detect | blocks)
+    text = text.replace(/^(\|.+\|\n?)+/gm, m => parseTable(m));
+    // 6. Lists
+    text = text.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+    text = text.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+    // Wrap consecutive <li> in <ul>
+    text = text.replace(/(<li>[\s\S]+?<\/li>\n?)+/g, s => `<ul>${s}</ul>`);
+    // 7. Paragraphs
+    const lines = text.split('\n');
+    const result = [];
+    let buf = [];
+    for (const line of lines) {
+      if (line.trim() === '') {
+        if (buf.length) { result.push(`<p>${buf.join(' ')}</p>`); buf = []; }
+      } else if (/^<[hup\x00]/.test(line.trim())) {
+        if (buf.length) { result.push(`<p>${buf.join(' ')}</p>`); buf = []; }
+        result.push(line);
+      } else {
+        buf.push(line);
+      }
     }
-    return html;
+    if (buf.length) result.push(`<p>${buf.join(' ')}</p>`);
+    text = result.join('\n');
+    // 8. Restore code blocks
+    codeBlocks.forEach((cb, i) => { text = text.replace(`\x00CODE${i}\x00`, cb); });
+    return text;
   }
 
   /* ── DOM helpers ────────────────────────────────────────────── */
