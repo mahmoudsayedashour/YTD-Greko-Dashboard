@@ -1594,7 +1594,7 @@ body {
 }
 
 /* =====================================================
-   AI BUSINESS ASSISTANT — CHAT UI
+   AI BUSINESS ASSISTANT ï¿½ CHAT UI
    ===================================================== */
 
 /* Sidebar separator */
@@ -1924,4 +1924,12 @@ body {
   .ai-msg { max-width: 95%; }
   .ai-chips { gap: 4px; }
   .ai-chip { font-size: 10px; padding: 4px 10px; }
+}
+
+.ai-msg-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 100%;
+  min-width: 0;
 }

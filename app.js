@@ -1710,68 +1710,42 @@ document.readyState === 'loading'
   : init();
 
 // ---------------------------------------------------------------
+
+// ═══════════════════════════════════════════════════════════════
 // AI BUSINESS ASSISTANT PAGE
-// ---------------------------------------------------------------
+// ═══════════════════════════════════════════════════════════════
 (function () {
-  // -- State --------------------------------------------------
-  let AI_HISTORY   = [];          // { role, text, time }
-  let AI_LOADING   = false;
-  let AI_RENDERED  = false;       // page already in DOM?
+  /* ── State ─────────────────────────────────────────────────── */
+  let AI_HISTORY  = [];   // { role:'user'|'assistant', text, time }
+  let AI_LOADING  = false;
+  let AI_RENDERED = false;
 
   const CHIPS = [
-    { label: '?? Executive Summary',           prompt: 'Give me an executive summary of the current business performance.' },
-    { label: '?? Compare 2025 vs 2026',        prompt: 'Compare sales performance between 2025 and 2026.' },
-    { label: '?? Top Customers',               prompt: 'Who are the top 10 customers by sales in 2026?' },
-    { label: '?? Top Categories',             prompt: 'Which categories have the highest sales and growth in 2026?' },
-    { label: '?? Top SKUs',                    prompt: 'What are the top 10 selling SKUs in 2026?' },
-    { label: '?? Highest Returns',             prompt: 'Which products or customers have the highest return rates?' },
-    { label: '?? Growth Analysis',             prompt: 'Analyze the growth trends across categories and channels.' },
-    { label: '?? Business Recommendations',    prompt: 'Based on the current data, what business actions do you recommend?' },
-    { label: '?? Generate Monthly Email',      prompt: 'Draft a professional email summarizing this month\'s performance for management.' },
-    { label: '?? Generate Management Report',  prompt: 'Generate a structured management report with KPIs, highlights, and action items.' },
+    { label: '\U0001f4c4 Executive Summary',          prompt: 'Give me a professional executive summary of the current business performance.' },
+    { label: '\U0001f4c8 Compare 2025 vs 2026',       prompt: 'Compare sales performance between 2025 and 2026 across all categories and channels.' },
+    { label: '\U0001f3c6 Top Customers',              prompt: 'Who are the top 10 customers by sales volume in 2026?' },
+    { label: '\U0001f4e6 Top Categories',             prompt: 'Which product categories have the highest sales and best growth in 2026?' },
+    { label: '\U0001f6d2 Top SKUs',                   prompt: 'What are the top 10 best-selling SKUs in 2026?' },
+    { label: '\U0001f4c9 Highest Returns',            prompt: 'Which products, categories, or customers have the highest return rates?' },
+    { label: '\U0001f4ca Growth Analysis',            prompt: 'Analyze growth trends across all categories and channels. Highlight winners and laggards.' },
+    { label: '\U0001f4a1 Business Recommendations',   prompt: 'Based on the current data, what specific business actions do you recommend to management?' },
+    { label: '\U0001f4e7 Generate Monthly Email',     prompt: "Draft a professional management email summarizing this month's sales performance, highlights, and action items." },
+    { label: '\U0001f4cb Generate Management Report', prompt: 'Generate a structured management report including executive KPIs, category performance, channel breakdown, top customers, and recommended actions.' },
   ];
 
-  // -- Simple Markdown renderer --------------------------------
-  function renderMarkdown(text) {
-    return text
-      // Code blocks
-      .replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) =>
-        `<pre><code>${escHtml(code.trim())}</code></pre>`)
-      // Inline code
-      .replace(/`([^`]+)`/g, (_, c) => `<code>${escHtml(c)}</code>`)
-      // Bold
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      // Italic
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      // Tables  |col|col|
-      .replace(/(\|.+\|\n?)+/g, matchTable)
-      // Headings
-      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^## (.+)$/gm,  '<h2>$1</h2>')
-      .replace(/^# (.+)$/gm,   '<h1>$1</h1>')
-      // Unordered list
-      .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
-      .replace(/(<li>.*<\/li>\n?)+/g, s => `<ul>${s}</ul>`)
-      // Ordered list
-      .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-      // Double newline ? paragraph
-      .replace(/\n{2,}/g, '</p><p>')
-      .replace(/^/, '<p>').replace(/$/, '</p>')
-      // Tidy up
-      .replace(/<p><\/p>/g, '')
-      .replace(/<p>(<[hup])/g, '$1')
-      .replace(/(<\/[hup][^>]*>)<\/p>/g, '$1');
-  }
-
+  /* ── Simple Markdown → HTML renderer ───────────────────────── */
   function escHtml(t) {
-    return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return String(t)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
-  function matchTable(block) {
-    const rows = block.trim().split('\n').filter(r => r.includes('|'));
-    if (rows.length < 2) return block;
+  function parseTable(block) {
+    const rows = block.trim().split('\n').filter(r => r.trim().startsWith('|'));
+    if (rows.length < 2) return escHtml(block);
     const headers = rows[0].split('|').map(h => h.trim()).filter(Boolean);
-    const body    = rows.slice(2);                                       // skip separator row
+    const body    = rows.slice(2); // skip the separator row
     const ths = headers.map(h => `<th>${h}</th>`).join('');
     const trs = body.map(r => {
       const cells = r.split('|').map(c => c.trim()).filter(Boolean);
@@ -1780,132 +1754,174 @@ document.readyState === 'loading'
     return `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
   }
 
-  // -- DOM helpers ---------------------------------------------
-  function now() {
-    return new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  function renderMarkdown(text) {
+    // 1. Protect code blocks
+    const codeBlocks = [];
+    text = text.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) => {
+      codeBlocks.push(`<pre><code>${escHtml(code.trim())}</code></pre>`);
+      return `\x00CODE${codeBlocks.length - 1}\x00`;
+    });
+    // 2. Inline code
+    text = text.replace(/`([^`\n]+)`/g, (_, c) => `<code>${escHtml(c)}</code>`);
+    // 3. Bold / Italic
+    text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    text = text.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+    // 4. Headings
+    text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    text = text.replace(/^## (.+)$/gm,  '<h2>$1</h2>');
+    text = text.replace(/^# (.+)$/gm,   '<h1>$1</h1>');
+    // 5. Tables (detect | blocks)
+    text = text.replace(/^(\|.+\|\n?)+/gm, m => parseTable(m));
+    // 6. Lists
+    text = text.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+    text = text.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+    // Wrap consecutive <li> in <ul>
+    text = text.replace(/(<li>[\s\S]+?<\/li>\n?)+/g, s => `<ul>${s}</ul>`);
+    // 7. Paragraphs
+    const lines = text.split('\n');
+    const result = [];
+    let buf = [];
+    for (const line of lines) {
+      if (line.trim() === '') {
+        if (buf.length) { result.push(`<p>${buf.join(' ')}</p>`); buf = []; }
+      } else if (/^<[hup\x00]/.test(line.trim())) {
+        if (buf.length) { result.push(`<p>${buf.join(' ')}</p>`); buf = []; }
+        result.push(line);
+      } else {
+        buf.push(line);
+      }
+    }
+    if (buf.length) result.push(`<p>${buf.join(' ')}</p>`);
+    text = result.join('\n');
+    // 8. Restore code blocks
+    codeBlocks.forEach((cb, i) => { text = text.replace(`\x00CODE${i}\x00`, cb); });
+    return text;
+  }
+
+  /* ── DOM helpers ────────────────────────────────────────────── */
+  function nowTime() {
+    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
   function appendMsg(role, html, timeStr) {
-    const msgsEl = document.getElementById('ai-messages-list');
-    if (!msgsEl) return;
-    const isUser = role === 'user';
-
-    // Remove empty state if present
-    const empty = msgsEl.querySelector('.ai-empty');
+    const list = document.getElementById('ai-messages-list');
+    if (!list) return;
+    // Remove empty-state placeholder
+    const empty = list.querySelector('.ai-empty');
     if (empty) empty.remove();
 
-    const avatar  = isUser ? '??' : '??';
+    const isUser = (role === 'user');
+    const avatar  = isUser ? '\U0001f464' : '\U0001f916';
     const copyBtn = isUser ? '' :
-      `<button class="ai-copy-btn" onclick="aiCopyMsg(this)" title="Copy">?? Copy</button>`;
+      `<button class="ai-copy-btn" onclick="window.aiCopyMsg(this)" title="Copy response">\U0001f4cb Copy</button>`;
 
-    const div = document.createElement('div');
-    div.className = `ai-msg ${role}`;
-    div.innerHTML = `
+    const wrap = document.createElement('div');
+    wrap.className = `ai-msg ${role}`;
+    wrap.innerHTML = `
       <div class="ai-msg-avatar">${avatar}</div>
-      <div style="display:flex;flex-direction:column;gap:3px;max-width:100%">
+      <div class="ai-msg-body">
         <div class="ai-msg-bubble">${html}${copyBtn}</div>
         <div class="ai-msg-time">${timeStr}</div>
       </div>`;
-    msgsEl.appendChild(div);
-    msgsEl.scrollTop = msgsEl.scrollHeight;
+    list.appendChild(wrap);
+    list.scrollTop = list.scrollHeight;
   }
 
   function setTyping(on) {
-    const t = document.getElementById('ai-typing');
-    if (t) t.classList.toggle('visible', on);
-    const s = document.getElementById('ai-send-btn');
-    if (s) s.disabled = on;
+    const typing = document.getElementById('ai-typing-row');
+    if (typing) typing.style.display = on ? 'flex' : 'none';
+    const btn = document.getElementById('ai-send-btn');
+    if (btn) btn.disabled = on;
     AI_LOADING = on;
   }
 
-  // -- Send a message to the backend ---------------------------
+  /* ── Send message ───────────────────────────────────────────── */
   async function sendMessage(userText) {
-    if (!userText.trim() || AI_LOADING) return;
+    userText = (userText || '').trim();
+    if (!userText || AI_LOADING) return;
 
-    const t = now();
+    const t = nowTime();
     AI_HISTORY.push({ role: 'user', text: userText, time: t });
     appendMsg('user', escHtml(userText), t);
 
-    // Clear input
     const inp = document.getElementById('ai-input');
     if (inp) { inp.value = ''; inp.style.height = 'auto'; }
 
     setTyping(true);
 
     try {
-      const res = await fetch('/api/chat', {
-        method:  'POST',
+      const payload = {
+        message:  userText,
+        history:  AI_HISTORY.slice(-10).map(h => ({
+          role: h.role === 'user' ? 'user' : 'model',
+          text: h.text,
+        })),
+        fullData: STATE.data || null,
+        filters: {
+          period:   STATE.period   || 'ytd',
+          measure:  STATE.measure  || 'ton',
+          channel:  (STATE.chFilter  && STATE.chFilter  !== 'all') ? STATE.chFilter  : 'All Channels',
+          category: (STATE.caFilter  && STATE.caFilter  !== 'all') ? STATE.caFilter  : 'All Categories',
+        },
+      };
+
+      const res  = await fetch('/api/chat', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message:  userText,
-          history:  AI_HISTORY.slice(-8).map(h => ({ role: h.role === 'user' ? 'user' : 'model', text: h.text })),
-          fullData: STATE.data,
-          filters:  {
-            period:   STATE.period,
-            measure:  STATE.measure,
-            channel:  STATE.chFilter  || 'All Channels',
-            category: STATE.caFilter  || 'All Categories',
-          },
-        }),
+        body: JSON.stringify(payload),
       });
 
       const json = await res.json();
 
       if (!res.ok || json.error) {
-        throw new Error(json.error || 'Server error');
+        throw new Error(json.error || `Server error (${res.status})`);
       }
 
-      const aiT = now();
+      const aiT = nowTime();
       AI_HISTORY.push({ role: 'assistant', text: json.reply, time: aiT });
       appendMsg('assistant', renderMarkdown(json.reply), aiT);
 
     } catch (err) {
-      const errT = now();
-      const errMsg = `?? **Error:** ${err.message || 'Unable to reach the AI service. Please check your connection.'}`;
-      AI_HISTORY.push({ role: 'assistant', text: errMsg, time: errT });
-      appendMsg('assistant', renderMarkdown(errMsg), errT);
+      const errT = nowTime();
+      const msg  = `\u26a0\ufe0f **Error:** ${err.message || 'Unable to reach AI service. Please try again.'}`;
+      AI_HISTORY.push({ role: 'assistant', text: msg, time: errT });
+      appendMsg('assistant', renderMarkdown(msg), errT);
     } finally {
       setTyping(false);
-      const msgsEl = document.getElementById('ai-messages-list');
-      if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
+      const list = document.getElementById('ai-messages-list');
+      if (list) list.scrollTop = list.scrollHeight;
     }
   }
 
-  // -- Render the page (idempotent) ----------------------------
+  /* ── Render page (idempotent) ───────────────────────────────── */
   window.pgAiAssistant = function () {
     const container = document.getElementById('page-ai');
     if (!container) return;
 
     if (AI_RENDERED) {
-      // Page already built � just scroll to bottom
-      const ml = document.getElementById('ai-messages-list');
-      if (ml) ml.scrollTop = ml.scrollHeight;
+      const list = document.getElementById('ai-messages-list');
+      if (list) list.scrollTop = list.scrollHeight;
       return;
     }
     AI_RENDERED = true;
 
-    const chipsHtml = CHIPS.map(c =>
-      `<button class="ai-chip" onclick="window.aiChipClick('${c.prompt.replace(/'/g,"&#39;")}')">${c.label}</button>`
-    ).join('');
-
-    const emptyState = `
-      <div class="ai-empty">
-        <div class="ai-empty-icon">??</div>
-        <div class="ai-empty-title">Ask me anything about the dashboard</div>
-        <div class="ai-empty-sub">I analyze your sales data and provide professional business insights in real-time.</div>
-      </div>`;
+    const chipsHtml = CHIPS.map(c => {
+      const safe = c.prompt.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      return `<button class="ai-chip" onclick="window.aiChipClick('${safe}')">${c.label}</button>`;
+    }).join('');
 
     container.innerHTML = `
       <div class="ai-page">
 
-        <!-- Header -->
         <div class="ai-header">
           <div class="ai-header-top">
             <div class="ai-title">
-              <div class="ai-title-icon">??</div>
+              <div class="ai-title-icon">\U0001f916</div>
               <div class="ai-title-text">
                 <h2>AI Business Assistant</h2>
-                <p>Powered by Google Gemini � Senior Business Analyst</p>
+                <p>Powered by Google Gemini &middot; Senior Business Analyst</p>
               </div>
             </div>
             <div class="ai-status">
@@ -1916,37 +1932,39 @@ document.readyState === 'loading'
           <div class="ai-chips">${chipsHtml}</div>
         </div>
 
-        <!-- Messages -->
         <div class="ai-messages" id="ai-messages-list">
-          ${emptyState}
-        </div>
-
-        <!-- Typing -->
-        <div class="ai-typing" id="ai-typing" style="padding:0 24px 8px;display:none">
-          <div class="ai-msg-avatar">??</div>
-          <div class="ai-typing-dots">
-            <span></span><span></span><span></span>
+          <div class="ai-empty">
+            <div class="ai-empty-icon">\U0001f916</div>
+            <div class="ai-empty-title">Ask me anything about the dashboard</div>
+            <div class="ai-empty-sub">I analyze your live sales data and provide professional business insights.</div>
           </div>
         </div>
-        <div id="ai-typing" class="ai-typing" style="padding:0 24px 8px"></div>
 
-        <!-- Input -->
+        <div id="ai-typing-row" class="ai-typing" style="display:none; padding:0 24px 8px; align-items:center; gap:10px;">
+          <div class="ai-msg-avatar">\U0001f916</div>
+          <div class="ai-typing-dots"><span></span><span></span><span></span></div>
+        </div>
+
         <div class="ai-input-bar">
           <div class="ai-input-row">
             <div class="ai-input-wrap">
-              <textarea id="ai-input" placeholder="Ask any business question� e.g. Why did sales drop in Q1?" rows="1"></textarea>
+              <textarea id="ai-input"
+                placeholder="Ask any business question, e.g. Why did sales drop in Q1?"
+                rows="1"></textarea>
             </div>
             <button id="ai-send-btn" class="ai-send-btn" onclick="window.aiSend()">
-              ? Send
+              &#9654; Send
             </button>
-            <button class="ai-clear-btn" onclick="window.aiClear()" title="Clear conversation">??</button>
+            <button class="ai-clear-btn" onclick="window.aiClear()" title="Clear conversation">
+              \U0001f5d1
+            </button>
           </div>
-          <div class="ai-input-hint">Press Enter to send � Shift+Enter for new line</div>
+          <div class="ai-input-hint">Press Enter to send &middot; Shift+Enter for new line</div>
         </div>
 
       </div>`;
 
-    // Auto-resize textarea + Enter key
+    /* Attach input listeners */
     const inp = document.getElementById('ai-input');
     if (inp) {
       inp.addEventListener('input', () => {
@@ -1954,18 +1972,16 @@ document.readyState === 'loading'
         inp.style.height = Math.min(inp.scrollHeight, 120) + 'px';
       });
       inp.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          window.aiSend();
-        }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); window.aiSend(); }
       });
+      inp.focus();
     }
   };
 
-  // -- Global handlers (called from inline onclick) -------------
+  /* ── Global handlers ────────────────────────────────────────── */
   window.aiSend = function () {
     const inp = document.getElementById('ai-input');
-    if (inp) sendMessage(inp.value.trim());
+    if (inp) sendMessage(inp.value);
   };
 
   window.aiChipClick = function (prompt) {
@@ -1974,11 +1990,11 @@ document.readyState === 'loading'
 
   window.aiClear = function () {
     AI_HISTORY = [];
-    const msgsEl = document.getElementById('ai-messages-list');
-    if (msgsEl) {
-      msgsEl.innerHTML = `
+    const list = document.getElementById('ai-messages-list');
+    if (list) {
+      list.innerHTML = `
         <div class="ai-empty">
-          <div class="ai-empty-icon">??</div>
+          <div class="ai-empty-icon">\U0001f916</div>
           <div class="ai-empty-title">Conversation cleared</div>
           <div class="ai-empty-sub">Ask me anything about the dashboard data.</div>
         </div>`;
@@ -1987,10 +2003,13 @@ document.readyState === 'loading'
 
   window.aiCopyMsg = function (btn) {
     const bubble = btn.closest('.ai-msg-bubble');
-    const text = bubble ? bubble.innerText.replace('?? Copy', '').trim() : '';
+    const text = bubble ? (bubble.innerText || bubble.textContent).replace('\U0001f4cb Copy', '').trim() : '';
     navigator.clipboard.writeText(text).then(() => {
-      btn.textContent = '? Copied';
-      setTimeout(() => { btn.innerHTML = '?? Copy'; }, 2000);
+      btn.textContent = '\u2705 Copied';
+      setTimeout(() => { btn.innerHTML = '\U0001f4cb Copy'; }, 2000);
+    }).catch(() => {
+      btn.textContent = 'Failed';
+      setTimeout(() => { btn.innerHTML = '\U0001f4cb Copy'; }, 2000);
     });
   };
 
