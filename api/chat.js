@@ -1,9 +1,10 @@
-// api/chat.js — Secure Gemini proxy
-// Frontend calls POST /api/chat  →  this calls Gemini  →  returns AI text
-// API key must be set in Vercel Project Settings → Environment Variables as GEMINI_API_KEY
+// api/chat.js — Secure Gemini proxy using @google/generative-ai SDK
+// Frontend → POST /api/chat → Gemini gemini-2.5-flash → response
+// API key: set GeminiAPIKey in Vercel Project Settings → Environment Variables
 
-const GEMINI_API_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+const MODEL_NAME = 'gemini-2.5-flash';
 
 // ── System prompt ─────────────────────────────────────────────
 function buildSystemPrompt(filters) {
@@ -49,7 +50,6 @@ function extractRelevantData(question, fullData) {
   };
 
   const isGeneric = !Object.values(needs).some(Boolean);
-
   const out = { meta: fullData.meta };
 
   if (isGeneric || needs.executive || needs.growth) {
@@ -60,22 +60,19 @@ function extractRelevantData(question, fullData) {
   }
   if (isGeneric || needs.customers) {
     out.customer_data = Array.isArray(fullData.customer_data)
-      ? fullData.customer_data.slice(0, 50)
-      : undefined;
+      ? fullData.customer_data.slice(0, 50) : undefined;
   }
   if (isGeneric || needs.channels)   out.channel_data  = fullData.channel_data;
   if (isGeneric || needs.categories) out.category_data = fullData.category_data;
   if (isGeneric || needs.products) {
     out.product_data = Array.isArray(fullData.product_data)
-      ? fullData.product_data.slice(0, 80)
-      : undefined;
+      ? fullData.product_data.slice(0, 80) : undefined;
   }
   if (needs.returns) {
     out.category_data = out.category_data || fullData.category_data;
     out.channel_data  = out.channel_data  || fullData.channel_data;
-    if (!out.product_data) {
-      out.product_data = Array.isArray(fullData.product_data)
-        ? fullData.product_data.slice(0, 80) : undefined;
+    if (!out.product_data && Array.isArray(fullData.product_data)) {
+      out.product_data = fullData.product_data.slice(0, 80);
     }
   }
 
@@ -85,17 +82,18 @@ function extractRelevantData(question, fullData) {
 // ── Main handler ──────────────────────────────────────────────
 module.exports = async function handler(req, res) {
 
-  // ── GET: diagnostics endpoint (safe — no sensitive data exposed) ──
+  // GET: safe diagnostics check
   if (req.method === 'GET') {
     const hasKey = !!process.env.GeminiAPIKey;
-    console.log('[chat.js] Diagnostics check. GEMINI_API_KEY present:', hasKey);
+    console.log('[chat.js] Diagnostics. GeminiAPIKey present:', hasKey, '| Model:', MODEL_NAME);
     return res.status(200).json({
-      status:    hasKey ? 'configured' : 'missing_key',
+      status:  hasKey ? 'configured' : 'missing_key',
       hasKey,
-      runtime:   process.version,
-      message:   hasKey
-        ? 'API key is loaded. POST to this endpoint to use the AI.'
-        : 'GEMINI_API_KEY is not set. Add it in Vercel Project Settings → Environment Variables, then redeploy.',
+      model:   MODEL_NAME,
+      runtime: process.version,
+      message: hasKey
+        ? `API key loaded. Model: ${MODEL_NAME}. POST to this endpoint to use AI.`
+        : 'GeminiAPIKey is not set. Add it in Vercel Project Settings → Environment Variables and redeploy.',
     });
   }
 
@@ -104,96 +102,66 @@ module.exports = async function handler(req, res) {
   }
 
   const apiKey = process.env.GeminiAPIKey;
-
-  // ── Detailed error: key missing ──────────────────────────────
   if (!apiKey) {
-    console.error('[chat.js] GEMINI_API_KEY is not set in environment variables.');
+    console.error('[chat.js] GeminiAPIKey env var is not set.');
     return res.status(500).json({
-      error: 'GEMINI_API_KEY is not configured on the server. ' +
-             'Please add it in Vercel Project Settings → Environment Variables ' +
-             'and trigger a redeployment.',
+      error: 'GeminiAPIKey is not configured on the server. ' +
+             'Please add it in Vercel Project Settings → Environment Variables and redeploy.',
     });
   }
 
-  console.log('[chat.js] GEMINI_API_KEY is present. Processing request.');
+  console.log('[chat.js] Key present. Starting Gemini request with model:', MODEL_NAME);
 
   try {
     const { message, history = [], fullData, filters = {} } = req.body;
 
     if (!message || typeof message !== 'string') {
-      return res.status(400).json({ error: 'message field is required and must be a string.' });
+      return res.status(400).json({ error: 'message field is required.' });
     }
 
-    const relevantData   = fullData ? extractRelevantData(message, fullData) : {};
-    const systemPrompt   = buildSystemPrompt(filters);
-
-    // Build Gemini contents array
-    const contents = [];
-
-    // Conversation history (last 10 turns)
-    for (const turn of (history || []).slice(-10)) {
-      if (turn.role && turn.text) {
-        contents.push({ role: turn.role, parts: [{ text: turn.text }] });
-      }
-    }
-
-    // Attach data context to the user message
-    const dataJson    = Object.keys(relevantData).length > 1
+    // Build data context
+    const relevantData = fullData ? extractRelevantData(message, fullData) : {};
+    const dataContext  = Object.keys(relevantData).length > 1
       ? '\n\n[DASHBOARD DATA]\n' + JSON.stringify(relevantData) + '\n[/DASHBOARD DATA]'
       : '';
 
-    contents.push({
-      role:  'user',
-      parts: [{ text: message + dataJson }],
+    // Initialise SDK
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: MODEL_NAME,
+      systemInstruction: buildSystemPrompt(filters),
     });
 
-    // ── Call Gemini ──────────────────────────────────────────
-    const geminiRes = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents,
-        generationConfig: {
-          temperature:     0.3,
-          topP:            0.8,
-          maxOutputTokens: 2048,
-        },
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-        ],
-      }),
-    });
+    // Build chat history for multi-turn conversation
+    const chatHistory = (history || []).slice(-10).map(turn => ({
+      role:  turn.role === 'user' ? 'user' : 'model',
+      parts: [{ text: turn.text }],
+    }));
 
-    // ── Relay actual Gemini error ─────────────────────────────
-    if (!geminiRes.ok) {
-      const errBody = await geminiRes.text();
-      console.error('[chat.js] Gemini error:', geminiRes.status, errBody);
-      return res.status(502).json({
-        error:      `Gemini API error (${geminiRes.status})`,
-        geminiStatus: geminiRes.status,
-        geminiBody: errBody,          // visible in browser/logs for debugging
-      });
-    }
+    // Start a chat session with history
+    const chat = model.startChat({ history: chatHistory });
 
-    const json = await geminiRes.json();
-    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    // Send the new user message (with data context appended)
+    const result = await chat.sendMessage(message + dataContext);
+    const text   = result.response.text();
 
     if (!text) {
-      console.error('[chat.js] Gemini returned no text. Full response:', JSON.stringify(json));
-      return res.status(502).json({
-        error:    'Gemini returned an empty response.',
-        raw:      json,
-      });
+      console.error('[chat.js] Gemini returned empty text. Response:', JSON.stringify(result.response));
+      return res.status(502).json({ error: 'Gemini returned an empty response. Please try again.' });
     }
 
+    console.log('[chat.js] Gemini responded successfully. Length:', text.length);
     return res.status(200).json({ reply: text });
 
   } catch (err) {
-    console.error('[chat.js] Unhandled exception:', err);
-    return res.status(500).json({ error: `Internal error: ${err.message}` });
+    // The SDK throws structured errors — expose them for debugging
+    console.error('[chat.js] Error calling Gemini:', err.message || err);
+    const status  = err.status || err.httpStatus || 500;
+    const details = err.errorDetails || err.message || String(err);
+    return res.status(status >= 400 && status < 600 ? status : 502).json({
+      error:   `Gemini error: ${err.message || 'Unknown error'}`,
+      details,
+      model:   MODEL_NAME,
+    });
   }
 };

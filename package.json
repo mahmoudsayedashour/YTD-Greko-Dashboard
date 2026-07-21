@@ -7,6 +7,7 @@
     "process": "node scripts/processWorkbook.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "xlsx": "0.18.5"
   },
   "engines": {
