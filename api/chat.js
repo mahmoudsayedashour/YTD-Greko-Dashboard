@@ -87,7 +87,7 @@ module.exports = async function handler(req, res) {
 
   // ── GET: diagnostics endpoint (safe — no sensitive data exposed) ──
   if (req.method === 'GET') {
-    const hasKey = !!process.env.GEMINI_API_KEY;
+    const hasKey = !!process.env.GeminiAPIKey;
     console.log('[chat.js] Diagnostics check. GEMINI_API_KEY present:', hasKey);
     return res.status(200).json({
       status:    hasKey ? 'configured' : 'missing_key',
@@ -103,7 +103,7 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GeminiAPIKey;
 
   // ── Detailed error: key missing ──────────────────────────────
   if (!apiKey) {
