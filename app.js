@@ -1133,8 +1133,8 @@ function pgCustomers(D) {
     });
     const topRet = [...cs].filter(c => c[M].r26 > 0).sort((a, b) => b[M].r26 - a[M].r26).slice(0, 10);
     mkChart('ch-c-ret', { type: 'bar',
-      data: { labels: topRet.map(c => wrapLabel(c.customer)), datasets: [{ data: topRet.map(c => c[M].r26), backgroundColor: C.red + 'CC', borderRadius: 4 }] },
-      options: barOpts(true),
+      data: { labels: topRet.map(c => c.customer), datasets: [{ data: topRet.map(c => c[M].r26), backgroundColor: C.red + 'CC', borderRadius: 4 }] },
+      options: { ...barOpts(true), layout: { padding: { left: 50 } } },
     });
   }, 50);
 }
