@@ -1128,8 +1128,8 @@ function pgCustomers(D) {
   `;
   setTimeout(() => {
     mkChart('ch-c-top', { type: 'bar',
-      data: { labels: csSorted.slice(0, 10).map(c => wrapLabel(c.customer)), datasets: [{ data: csSorted.slice(0, 10).map(c => c[M].s26), backgroundColor: C.gold + 'CC', borderRadius: 4 }] },
-      options: barOpts(true),
+      data: { labels: csSorted.slice(0, 10).map(c => c.customer), datasets: [{ data: csSorted.slice(0, 10).map(c => c[M].s26), backgroundColor: C.gold + 'CC', borderRadius: 4 }] },
+      options: { ...barOpts(true), layout: { padding: { left: 50 } } },
     });
     const topRet = [...cs].filter(c => c[M].r26 > 0).sort((a, b) => b[M].r26 - a[M].r26).slice(0, 10);
     mkChart('ch-c-ret', { type: 'bar',
