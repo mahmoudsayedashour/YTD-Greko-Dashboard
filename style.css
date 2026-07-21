@@ -118,7 +118,8 @@ body {
 .brand-logo {
   height: 40px;
   object-fit: contain;
-  filter: brightness(1.2);
+  filter: brightness(1.2) contrast(1000%) grayscale(100%) invert(1);
+  mix-blend-mode: screen;
 }
 
 .brand-text-fallback {
@@ -1064,7 +1065,8 @@ body {
 .loader-logo {
   height: 50px;
   object-fit: contain;
-  filter: brightness(1.2);
+  filter: brightness(1.2) contrast(1000%) grayscale(100%) invert(1);
+  mix-blend-mode: screen;
 }
 
 .loader-spinner {
@@ -1361,7 +1363,8 @@ body {
 .login-logo img {
   height: 60px;
   margin-bottom: 20px;
-  filter: brightness(1.2);
+  filter: brightness(1.2) contrast(1000%) grayscale(100%) invert(1);
+  mix-blend-mode: screen;
 }
 .login-title {
   font-size: 24px;
@@ -1556,7 +1559,7 @@ body {
 
 .insights-label {
   font-weight: bold;
-  color: #00ff80;
+  color: #ffffff;
   text-transform: uppercase;
   font-size: 11px;
   letter-spacing: 1px;
@@ -1565,7 +1568,7 @@ body {
   margin-right: 15px;
   flex-shrink: 0;
   z-index: 2;
-  background: linear-gradient(135deg, #102a20, #0a1a14);
+  background: transparent;
 }
 
 .ticker-wrap {

@@ -1897,7 +1897,7 @@ document.readyState === 'loading'
     if (empty) empty.remove();
 
     const isUser = (role === 'user');
-    const avatar  = isUser ? '\U0001f464' : '\U0001f916';
+    const avatar  = isUser ? '\u{1F464}' : '\u{1F916}';
     const copyBtn = isUser ? '' : `
       <div class="ai-export-group">
         <button class="ai-copy-btn" onclick="window.aiCopyMsg(this)" title="Copy">\u{1F4CB} Copy</button>
@@ -2014,7 +2014,7 @@ document.readyState === 'loading'
         <div class="ai-header">
           <div class="ai-header-top">
             <div class="ai-title">
-              <div class="ai-title-icon">\U0001f916</div>
+              <div class="ai-title-icon">\u{1F916}</div>
               <div class="ai-title-text">
                 <h2>AI Business Assistant</h2>
                 <p>Powered by Google Gemini &middot; Senior Business Analyst</p>
@@ -2030,14 +2030,14 @@ document.readyState === 'loading'
 
         <div class="ai-messages" id="ai-messages-list">
           <div class="ai-empty">
-            <div class="ai-empty-icon">\U0001f916</div>
+            <div class="ai-empty-icon">\u{1F916}</div>
             <div class="ai-empty-title">Ask me anything about the dashboard</div>
             <div class="ai-empty-sub">I analyze your live sales data and provide professional business insights.</div>
           </div>
         </div>
 
         <div id="ai-typing-row" class="ai-typing" style="display:none; padding:0 24px 8px; align-items:center; gap:10px;">
-          <div class="ai-msg-avatar">\U0001f916</div>
+          <div class="ai-msg-avatar">\u{1F916}</div>
           <div class="ai-typing-dots"><span></span><span></span><span></span></div>
         </div>
 
@@ -2052,7 +2052,7 @@ document.readyState === 'loading'
               &#9654; Send
             </button>
             <button class="ai-clear-btn" onclick="window.aiClear()" title="Clear conversation">
-              \U0001f5d1
+              \u{1F5D1}
             </button>
           </div>
           <div class="ai-input-hint">Press Enter to send &middot; Shift+Enter for new line</div>
@@ -2090,7 +2090,7 @@ document.readyState === 'loading'
     if (list) {
       list.innerHTML = `
         <div class="ai-empty">
-          <div class="ai-empty-icon">\U0001f916</div>
+          <div class="ai-empty-icon">\u{1F916}</div>
           <div class="ai-empty-title">Conversation cleared</div>
           <div class="ai-empty-sub">Ask me anything about the dashboard data.</div>
         </div>`;
