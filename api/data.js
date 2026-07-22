@@ -98,14 +98,26 @@ function feed(acc, isRINV, rf_r, tn, ct, cp) {
 }
 
 function resolve(acc) {
-  const tr = Math.abs(acc.t_rinv - acc.t_partial);
-  const cr = Math.abs(acc.c_rinv - acc.c_partial);
-  const qr = Math.abs(acc.q_rinv - acc.q_partial);
-  // Sales Ton = SUM(Ton) - 2×Partial - Return  (updated Power BI DAX)
+  // ── Partial Returns (unchanged) ─────────────────────────────────
+  const t_partial = acc.t_partial;
+  const c_partial = acc.c_partial;
+  const q_partial = acc.q_partial;
+
+  // ── Return Ton (unchanged): ABS(SUM(RINV Ton) − Partial) ────────
+  const t_ret = Math.abs(acc.t_rinv - t_partial);
+  const c_ret = Math.abs(acc.c_rinv - c_partial);
+  const q_ret = Math.abs(acc.q_rinv - q_partial);
+
+  // ── Sales Ton = Total Num Ton − Return Ton − (2 × Partial) ──────
+  //   (Power BI: SUM(Num Ton) - [Return Ton] - 2 * [Partial Returns Ton])
+  const t_sales = acc.t_sum - t_ret - (2 * t_partial);
+  const c_sales = acc.c_sum - c_ret - (2 * c_partial);
+  const q_sales = acc.q_sum - q_ret - (2 * q_partial);
+
   return {
-    ton:    { s: acc.t_sum - 2 * acc.t_partial - tr, r: tr, partial: acc.t_partial },
-    carton: { s: acc.c_sum - 2 * acc.c_partial - cr, r: cr, partial: acc.c_partial },
-    cups:   { s: acc.q_sum - 2 * acc.q_partial - qr, r: qr, partial: acc.q_partial },
+    ton:    { s: t_sales, r: t_ret, partial: t_partial },
+    carton: { s: c_sales, r: c_ret, partial: c_partial },
+    cups:   { s: q_sales, r: q_ret, partial: q_partial },
   };
 }
 
