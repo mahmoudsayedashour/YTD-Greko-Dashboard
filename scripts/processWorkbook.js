@@ -291,24 +291,45 @@ async function run() {
   const buf = await downloadBuffer(WORKBOOK_URL);
   console.log(`   Total: ${(buf.length / 1024 / 1024).toFixed(2)} MB`);
 
-  // Step 2: Parse
-  console.log('\n📊 Parsing workbook…');
-  const wb = XLSX.read(buf, { type: 'buffer', cellDates: true });
-  console.log(`   Sheets: ${wb.SheetNames.join(', ')}`);
+  // Step 2a: Pass 1 — get sheet names ONLY (fast metadata read, no cell data)
+  console.log('\n📋 Reading sheet names…');
+  const wbMeta = XLSX.read(buf, { type: 'buffer', bookSheets: true });
+  console.log(`   Available sheets: ${wbMeta.SheetNames.join(', ')}`);
 
-  // Sheet names can vary slightly — accept both forms
-  const sheetAct25 = wb.SheetNames.find(n => /Actual.?25$/i.test(n)) || 'Actual 25';
-  const sheetAct26 = wb.SheetNames.find(n => /Actual.?2?0?26$/i.test(n)) || 'Actual 2026';
-  const sheetFct25 = wb.SheetNames.find(n => /Forecast.?25$/i.test(n)) || 'Forecast 25';
-  const sheetFct26 = wb.SheetNames.find(n => /Forecast.?2?0?26$/i.test(n)) || 'Forecast 26';
+  // Resolve sheet names (allow fuzzy match for slight naming variations)
+  const sheetAct25 = wbMeta.SheetNames.find(n => /Actual.?25$/i.test(n)) || 'Actual 25';
+  const sheetAct26 = wbMeta.SheetNames.find(n => /Actual.?2?0?26$/i.test(n)) || 'Actual 2026';
+  const sheetFct25 = wbMeta.SheetNames.find(n => /Forecast.?25$/i.test(n)) || 'Forecast 25';
+  const sheetFct26 = wbMeta.SheetNames.find(n => /Forecast.?2?0?26$/i.test(n)) || 'Forecast 26';
 
-  const required = ['Main Data', 'Customers', sheetFct25, sheetFct26, sheetAct25, sheetAct26];
-  const missing  = required.filter(s => !wb.SheetNames.includes(s));
+  const requiredSheets = ['Main Data', 'Customers', sheetFct25, sheetFct26, sheetAct25, sheetAct26];
+  const missing = requiredSheets.filter(s => !wbMeta.SheetNames.includes(s));
   if (missing.length) {
-    console.error(`\n❌  Missing: ${missing.join(', ')}  |  Available: ${wb.SheetNames.join(', ')}`);
+    console.error(`\n❌  Missing: ${missing.join(', ')}  |  Available: ${wbMeta.SheetNames.join(', ')}`);
     process.exit(1);
   }
-  console.log(`   Using sheets: ${sheetAct25} / ${sheetAct26} / ${sheetFct25} / ${sheetFct26}`);
+  console.log(`   Will parse: ${requiredSheets.join(', ')}`);
+
+  // Step 2b: Pass 2 — parse ONLY the 6 required sheets (skips all others → much faster)
+  console.log('\n📊 Parsing workbook (6 sheets only)…');
+  const wb = XLSX.read(buf, {
+    type:        'buffer',
+    // NOTE: cellDates intentionally OMITTED (defaults to false).
+    // With 700K rows, cellDates:true forces xlsx to check every cell against
+    // Excel date format strings and construct Date objects — causing a multi-hour hang.
+    // Our excelDate() helper (line ~72) already converts raw numeric Excel serials
+    // to JS Date objects, so this is a safe and correct omission.
+    cellFormula: false,   // perf: skip formula strings
+    cellNF:      false,   // perf: skip number formats
+    cellStyles:  false,   // perf: skip style info
+    cellHTML:    false,   // perf: skip HTML rendering
+    sheetStubs:  false,   // perf: skip stub cells
+    bookVBA:     false,   // perf: skip VBA macros
+    WTF:         false,   // perf: don't throw on parse weirdness
+    sheets:      requiredSheets,  // parse only the 6 needed sheets
+  });
+  console.log(`   Done. Sheets loaded: ${Object.keys(wb.Sheets).join(', ')}`);
+
 
   // Step 3: Build lookup maps
   console.log('\n🗺  Building lookup maps…');
