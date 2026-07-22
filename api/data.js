@@ -101,10 +101,11 @@ function resolve(acc) {
   const tr = Math.abs(acc.t_rinv - acc.t_partial);
   const cr = Math.abs(acc.c_rinv - acc.c_partial);
   const qr = Math.abs(acc.q_rinv - acc.q_partial);
+  // Sales Ton = SUM(Ton) - 2×Partial - Return  (updated Power BI DAX)
   return {
-    ton:    { s: acc.t_sum - acc.t_partial - tr, r: tr, partial: acc.t_partial },
-    carton: { s: acc.c_sum - acc.c_partial - cr, r: cr, partial: acc.c_partial },
-    cups:   { s: acc.q_sum - acc.q_partial - qr, r: qr, partial: acc.q_partial },
+    ton:    { s: acc.t_sum - 2 * acc.t_partial - tr, r: tr, partial: acc.t_partial },
+    carton: { s: acc.c_sum - 2 * acc.c_partial - cr, r: cr, partial: acc.c_partial },
+    cups:   { s: acc.q_sum - 2 * acc.q_partial - qr, r: qr, partial: acc.q_partial },
   };
 }
 
