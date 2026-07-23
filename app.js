@@ -1771,7 +1771,38 @@ function pgManagers(D) {
         if (!smData) return;
         const sCatView = smData.category_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0).sort((a,b) => b[M].s26 - a[M].s26);
         const sSkuView = smData.product_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0).sort((a,b) => b[M].s26 - a[M].s26);
-        
+
+        const catRows = sCatView.map(c => {
+          const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
+          const gAbs = s26 - s25;
+          const g = grow(s26, s25);
+          const rp26 = retP(s26, r26);
+          return '<tr>' +
+            '<td style="text-align:left; color:' + catColor(c.category) + '; font-weight:bold;">' + c.category + '</td>' +
+            '<td class="num">' + fmt(s25) + '</td>' +
+            '<td class="num" style="color:' + C.cyan + '">' + fmt(s26) + '</td>' +
+            '<td class="num" style="color:' + (rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green) + '">' + rp26.toFixed(1) + '%</td>' +
+            '<td class="num">' + fmt(gAbs) + '</td>' +
+            '<td class="num">' + badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down') + '</td>' +
+            '</tr>';
+        }).join('');
+
+        const skuRows = sSkuView.slice(0, 50).map(c => {
+          const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
+          const gAbs = s26 - s25;
+          const g = grow(s26, s25);
+          const rp26 = retP(s26, r26);
+          return '<tr>' +
+            '<td style="text-align:left"><strong>' + c.product + '</strong><br><span style="font-size:10px;opacity:0.6">' + c.code + '</span></td>' +
+            '<td style="text-align:left; color:' + catColor(c.category) + '; font-weight:bold;">' + c.category + '</td>' +
+            '<td class="num">' + fmt(s25) + '</td>' +
+            '<td class="num" style="color:' + C.cyan + '">' + fmt(s26) + '</td>' +
+            '<td class="num" style="color:' + (rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green) + '">' + rp26.toFixed(1) + '%</td>' +
+            '<td class="num">' + fmt(gAbs) + '</td>' +
+            '<td class="num">' + badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down') + '</td>' +
+            '</tr>';
+        }).join('');
+
         document.getElementById('sm-drilldown-container').innerHTML = `
           <div class="chart-card" style="margin-top:20px">
             <div class="chart-header"><div class="chart-title">📋 Category Performance for ${filtSm}</div></div>
@@ -1784,23 +1815,9 @@ function pgManagers(D) {
                 <th style="text-align:right">Growth Ton</th>
                 <th style="text-align:center">Growth %</th>
               </tr></thead>
-              <tbody>${sCatView.map(c => {
-                const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
-                const gAbs = s26 - s25;
-                const g = grow(s26, s25);
-                const rp26 = retP(s26, r26);
-                return \`<tr>
-                  <td style="text-align:left; color:\${catColor(c.category)}; font-weight:bold;">\${c.category}</td>
-                  <td class="num">\${fmt(s25)}</td>
-                  <td class="num" style="color:\${C.cyan}">\${fmt(s26)}</td>
-                  <td class="num" style="color:\${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">\${rp26.toFixed(1)}%</td>
-                  <td class="num">\${fmt(gAbs)}</td>
-                  <td class="num">\${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
-                </tr>\`;
-              }).join('')}</tbody>
+              <tbody>${catRows}</tbody>
             </table>
           </div>
-          
           <div class="chart-card" style="margin-top:20px">
             <div class="chart-header"><div class="chart-title">📋 Top 50 SKUs for ${filtSm}</div></div>
             <table class="data-table">
@@ -1813,21 +1830,7 @@ function pgManagers(D) {
                 <th style="text-align:right">Growth Ton</th>
                 <th style="text-align:center">Growth %</th>
               </tr></thead>
-              <tbody>${sSkuView.slice(0, 50).map(c => {
-                const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
-                const gAbs = s26 - s25;
-                const g = grow(s26, s25);
-                const rp26 = retP(s26, r26);
-                return \`<tr>
-                  <td style="text-align:left"><strong>\${c.product}</strong><br><span style="font-size:10px;opacity:0.6">\${c.code}</span></td>
-                  <td style="text-align:left; color:\${catColor(c.category)}; font-weight:bold;">\${c.category}</td>
-                  <td class="num">\${fmt(s25)}</td>
-                  <td class="num" style="color:\${C.cyan}">\${fmt(s26)}</td>
-                  <td class="num" style="color:\${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">\${rp26.toFixed(1)}%</td>
-                  <td class="num">\${fmt(gAbs)}</td>
-                  <td class="num">\${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
-                </tr>\`;
-              }).join('')}</tbody>
+              <tbody>${skuRows}</tbody>
             </table>
           </div>
         `;
