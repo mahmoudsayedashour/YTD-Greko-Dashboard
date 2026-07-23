@@ -149,7 +149,7 @@ def parse_forecast(ws):
     return result
 
 # ── Actual parser ─────────────────────────────────────────────────────────────
-def parse_actual(ws, channel_map, ST, class_map, label):
+def parse_actual(ws, channel_map, ST, class_map, manager_map, outlet_map, label):
     """Stream-parse an Actual sheet → list of compact rows"""
     out = []
     skipped_nodate = 0
@@ -195,6 +195,11 @@ def parse_actual(ws, channel_map, ST, class_map, label):
             if norm != partner: channel_map[norm] = ch
             m2 = re.match(r"^\[([^\]]+)\]", partner)
             if m2: channel_map["__code__" + m2.group(1)] = ch
+            
+        sm = ss(rd.get("Sales Manager") or "")
+        pe = ss(rd.get("Partner English") or "")
+        if partner and sm: manager_map[partner] = sm
+        if partner and pe: outlet_map[partner] = pe
 
         code = ss(rd.get("Code") or "")
         inv_type = ss(rd.get("Invoice lines/Number Type") or "")
@@ -270,6 +275,8 @@ def main():
     category_map = {}
     channel_map  = {}
     class_map    = {}
+    manager_map  = {}
+    outlet_map   = {}
 
     ws_main = wb["Main Data"]
     main_headers = None
@@ -311,8 +318,8 @@ def main():
     # 5. Parse actual sheets (streaming — handles 700K rows efficiently)
     print("\n📦 Parsing actual sheets (streaming)…")
     ST = StringTable()
-    rows25 = parse_actual(wb[sheet_act25], channel_map, ST, class_map, sheet_act25)
-    rows26 = parse_actual(wb[sheet_act26], channel_map, ST, class_map, sheet_act26)
+    rows25 = parse_actual(wb[sheet_act25], channel_map, ST, class_map, manager_map, outlet_map, sheet_act25)
+    rows26 = parse_actual(wb[sheet_act26], channel_map, ST, class_map, manager_map, outlet_map, sheet_act26)
     wb.close()
 
     strings = ST.to_list()
@@ -333,6 +340,8 @@ def main():
         "categoryMap": category_map,
         "channelMap":  channel_map,
         "classMap":    class_map,
+        "managerMap":  manager_map,
+        "outletMap":   outlet_map,
         "fc25":        fc25,
         "fc26":        fc26,
         "rows25":      rows25,

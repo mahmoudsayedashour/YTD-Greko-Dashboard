@@ -683,6 +683,7 @@ const PAGE_TITLES = {
   channels:  'Channel Analysis',
   returns:   'Returns Analysis',
   growth:    'Growth Analysis',
+  managers:  'Sales Managers Performance',
   ai:        '🤖 AI Business Assistant'
 };
 
@@ -708,6 +709,7 @@ function renderPage() {
     case 'channels':  pgChannels(D);  break;
     case 'returns':   pgReturns(D);   break;
     case 'growth':    pgGrowth(D);    break;
+    case 'managers':  pgManagers(D);  break;
     case 'ai':        pgAiAssistant(); break;
   }
   if (STATE.page !== 'ai') attachSort();
@@ -1554,6 +1556,283 @@ function pgGrowth(D) {
           borderRadius: 4, datalabels: { formatter: v => fmtP(v) } }] },
       options: barOpts(true),
     });
+  }, 50);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SALES MANAGERS
+// ═══════════════════════════════════════════════════════════════
+function pgManagers(D) {
+  const M  = STATE.measure;
+  const mngrs = sortData(D.manager_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0).map(c => ({ ...c, name: c.manager })));
+  const filtSm = STATE.smFilter;
+  const smList = [...new Set(D.manager_data.map(c => c.manager).filter(Boolean))].sort();
+
+  const view = filtSm ? mngrs.filter(c => c.manager === filtSm) : mngrs;
+
+  // KPIs
+  const totalSales26 = view.reduce((s, c) => s + c[M].s26, 0);
+  const totalSales25 = view.reduce((s, c) => s + c[M].s25, 0);
+  const totalReturns26 = view.reduce((s, c) => s + c[M].r26, 0);
+  const g = grow(totalSales26, totalSales25);
+  const rp26 = retP(totalSales26, totalReturns26);
+
+  // Top Insights
+  const topManagers = [...mngrs].sort((a, b) => b[M].s26 - a[M].s26).slice(0, 3);
+  const topRetManagers = [...mngrs].filter(c => c[M].s26 > 0).sort((a, b) => retP(b[M].s26, b[M].r26) - retP(a[M].s26, a[M].r26)).slice(0, 1)[0];
+
+  const insights = [
+    `🏆 Top Manager: <span style="color:${C.gold}">${topManagers[0] ? topManagers[0].manager : 'N/A'}</span>`,
+    `🥈 2nd Manager: <span style="color:${C.gold}">${topManagers[1] ? topManagers[1].manager : 'N/A'}</span>`,
+    `🥉 3rd Manager: <span style="color:${C.gold}">${topManagers[2] ? topManagers[2].manager : 'N/A'}</span>`,
+    `⚠️ Highest Returns: <span style="color:${C.red}">${topRetManagers ? topRetManagers.manager : 'N/A'}</span>`
+  ];
+
+  // Specific data for the selected manager
+  let custView = [];
+  let catView = [];
+  let skuView = [];
+  
+  if (filtSm) {
+    const custsForSm = D.customer_data.filter(c => c.manager === filtSm && (c[M].s26 > 0 || c[M].s25 > 0));
+    custView = [...custsForSm].sort((a, b) => b[M].s26 - a[M].s26);
+    
+    // To get category and sku view, we would need to fetch drilldown data.
+    // We will render placeholders that fetch when rendered.
+  }
+
+  document.getElementById('page-managers').innerHTML = `
+    ${renderInsightsBar(insights)}
+    <div class="channel-controls">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label style="font-size:12px;color:#8899bb">Sales Manager:</label>
+        <select id="sm-filter-sel" class="ch-select">
+          <option value="">All Managers</option>
+          ${smList.map(c => `<option value="${c}" ${filtSm === c ? 'selected' : ''}>${c}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    
+    <div class="kpi-grid">
+      ${kpi('👨‍💼', 'Total Managers', mngrs.length, null, 'blue', '')}
+      ${kpi('🏪', 'Total Outlets', D.customer_data.filter(c => !filtSm || c.manager === filtSm).length, null, 'blue', '')}
+      ${kpi('📈', 'Growth (Manager Group)', fmtP(g), g, 'green', '')}
+      ${kpi('↩️', 'Return %', rp26.toFixed(1) + '%', rp26 > 10 ? -1 : 1, 'cyan', '')}
+    </div>
+
+    ${!filtSm ? `
+      <!-- ALL MANAGERS VIEW -->
+      <div class="chart-grid cols-2" style="margin-top:20px">
+        ${card('📊 Sales by Manager', '2025 vs 2026', cw('sm-bars', '350'))}
+        ${card('↩️ Returns by Manager', 'Return % 2026', cw('sm-ret-bars', '350'))}
+      </div>
+      <div class="chart-card" style="margin-top:20px">
+        <div class="chart-header"><div class="chart-title">📋 Sales Managers Ranking</div></div>
+        <table class="data-table">
+          <thead><tr>
+            <th>Rank</th>
+            ${thSort('Sales Manager', 'name')}
+            ${thSort('Sales 25', 's25')}
+            ${thSort('Sales 26', 's26')}
+            ${thSort('Growth Ton', 'gAbs')}
+            ${thSort('Growth %', 'grow')}
+            ${thSort('Return 26 %', 'retP')}
+            ${thSort('Contribution %', 'contrib')}
+          </tr></thead>
+          <tbody>${sortData(view).map((c, i) => {
+            const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
+            const gAbs = s26 - s25;
+            const g = grow(s26, s25);
+            const rp26 = retP(s26, r26);
+            const contrib = totalSales26 > 0 ? (s26 / totalSales26) * 100 : 0;
+            return `<tr>
+              <td style="color:${i < 3 ? C.gold : '#8899bb'}"><strong>#${i + 1}</strong></td>
+              <td style="font-weight:600; cursor:pointer;" class="sm-link" data-sm="${c.manager}">
+                <u>${c.manager}</u>
+              </td>
+              <td class="num">${fmt(s25)}</td>
+              <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+              <td class="num">${fmt(gAbs)}</td>
+              <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+              <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
+              <td class="num">${contrib.toFixed(1)}%</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>
+    ` : `
+      <!-- SINGLE MANAGER VIEW -->
+      <div class="chart-grid cols-2" style="margin-top:20px">
+        ${card('👥 Top Outlets for Manager', 'Sales 2026', cw('sm-top-cust', '350'))}
+        ${card('📈 Growth by Outlet', 'Year over Year %', cw('sm-cust-grow', '350'))}
+      </div>
+      
+      <div class="chart-card" style="margin-top:20px">
+        <div class="chart-header"><div class="chart-title">📋 Outlets for ${filtSm}</div></div>
+        <table class="data-table">
+          <thead><tr>
+            <th>#</th>
+            ${thSort('Outlet Name', 'customer')}
+            ${thSort('Sales 25', 's25')}
+            ${thSort('Sales 26', 's26')}
+            ${thSort('Growth Ton', 'gAbs')}
+            ${thSort('Growth %', 'grow')}
+            ${thSort('Return 26 %', 'retP')}
+          </tr></thead>
+          <tbody>${custView.slice(0, 50).map((c, i) => {
+            const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
+            const gAbs = s26 - s25;
+            const g = grow(s26, s25);
+            const rp26 = retP(s26, r26);
+            return `<tr>
+              <td>${i + 1}</td>
+              <td><strong>${c.customer}</strong></td>
+              <td class="num">${fmt(s25)}</td>
+              <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+              <td class="num">${fmt(gAbs)}</td>
+              <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+              <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
+            </tr>`;
+          }).join('')}
+          ${custView.length > 50 ? `<tr><td colspan="7" style="text-align:center;color:#8899bb">... and ${custView.length - 50} more outlets</td></tr>` : ''}
+          </tbody>
+        </table>
+      </div>
+      
+      <div id="sm-drilldown-container" style="margin-top:20px">
+        <div style="text-align:center; padding:40px; color:#8899bb; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:12px;">
+          <div class="loader-spinner" style="margin:0 auto 15px auto"></div>
+          Loading category and SKU performance for ${filtSm}...
+        </div>
+      </div>
+    `}
+  `;
+
+  // Filter change event
+  document.getElementById('sm-filter-sel').addEventListener('change', e => {
+    STATE.smFilter = e.target.value || null;
+    pgManagers(D);
+  });
+  
+  // Link clicks inside table
+  if (!filtSm) {
+    document.querySelectorAll('.sm-link').forEach(el => {
+      el.addEventListener('click', () => {
+        STATE.smFilter = el.dataset.sm;
+        pgManagers(D);
+      });
+    });
+  }
+
+  // Draw charts
+  setTimeout(() => {
+    if (!filtSm) {
+      const sortedSm = [...mngrs].sort((a, b) => b[M].s26 - a[M].s26).slice(0, 15);
+      mkChart('sm-bars', { type: 'bar',
+        data: { labels: sortedSm.map(c => wrapLabel(c.manager, 15)),
+          datasets: [
+            { label: '2025', data: sortedSm.map(c => c[M].s25), backgroundColor: C.blueL + 'CC', borderRadius: 3 },
+            { label: '2026', data: sortedSm.map(c => c[M].s26), backgroundColor: C.cyan  + 'CC', borderRadius: 3 },
+          ] },
+        options: { ...barOpts(), plugins: { legend: { position: 'top' } } },
+      });
+      
+      const sortedSmRet = [...mngrs].filter(c => c[M].s26 > 0).sort((a, b) => retP(b[M].s26, b[M].r26) - retP(a[M].s26, a[M].r26)).slice(0, 15);
+      mkChart('sm-ret-bars', { type: 'bar',
+        data: { labels: sortedSmRet.map(c => wrapLabel(c.manager, 15)),
+          datasets: [{ 
+            data: sortedSmRet.map(c => retP(c[M].s26, c[M].r26)),
+            backgroundColor: sortedSmRet.map(c => retP(c[M].s26, c[M].r26) > 10 ? C.red + 'CC' : C.gold + 'CC'),
+            borderRadius: 4, datalabels: { formatter: v => v.toFixed(1) + '%' } 
+          }] },
+        options: barOpts(true),
+      });
+    } else {
+      const topC = custView.slice(0, 10);
+      mkChart('sm-top-cust', { type: 'bar',
+        data: { labels: topC.map(c => wrapLabel(c.customer, 15)),
+          datasets: [
+            { label: '2026', data: topC.map(c => c[M].s26), backgroundColor: C.cyan  + 'CC', borderRadius: 3 },
+          ] },
+        options: { ...barOpts(), plugins: { legend: { display: false } } },
+      });
+      
+      const growC = [...custView].filter(c => c[M].s25 > 0).sort((a, b) => grow(b[M].s26, b[M].s25) - grow(a[M].s26, a[M].s25)).slice(0, 10);
+      mkChart('sm-cust-grow', { type: 'bar',
+        data: { labels: growC.map(c => wrapLabel(c.customer, 15)),
+          datasets: [{ data: growC.map(c => grow(c[M].s26, c[M].s25)),
+            backgroundColor: growC.map(c => grow(c[M].s26, c[M].s25) >= 0 ? C.green + 'CC' : C.red + 'CC'),
+            borderRadius: 4, datalabels: { formatter: v => fmtP(v) } }] },
+        options: barOpts(true),
+      });
+      
+      // Fetch drilldown for selected manager
+      fetchDrilldownData({ sm: filtSm }).then(smData => {
+        if (!smData) return;
+        const sCatView = smData.category_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0).sort((a,b) => b[M].s26 - a[M].s26);
+        const sSkuView = smData.product_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0).sort((a,b) => b[M].s26 - a[M].s26);
+        
+        document.getElementById('sm-drilldown-container').innerHTML = `
+          <div class="chart-card" style="margin-top:20px">
+            <div class="chart-header"><div class="chart-title">📋 Category Performance for ${filtSm}</div></div>
+            <table class="data-table">
+              <thead><tr>
+                <th style="text-align:left">Category</th>
+                <th style="text-align:right">Sales 25</th>
+                <th style="text-align:right">Sales 26</th>
+                <th style="text-align:right">Return 26 %</th>
+                <th style="text-align:right">Growth Ton</th>
+                <th style="text-align:center">Growth %</th>
+              </tr></thead>
+              <tbody>${sCatView.map(c => {
+                const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
+                const gAbs = s26 - s25;
+                const g = grow(s26, s25);
+                const rp26 = retP(s26, r26);
+                return \`<tr>
+                  <td style="text-align:left; color:\${catColor(c.category)}; font-weight:bold;">\${c.category}</td>
+                  <td class="num">\${fmt(s25)}</td>
+                  <td class="num" style="color:\${C.cyan}">\${fmt(s26)}</td>
+                  <td class="num" style="color:\${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">\${rp26.toFixed(1)}%</td>
+                  <td class="num">\${fmt(gAbs)}</td>
+                  <td class="num">\${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+                </tr>\`;
+              }).join('')}</tbody>
+            </table>
+          </div>
+          
+          <div class="chart-card" style="margin-top:20px">
+            <div class="chart-header"><div class="chart-title">📋 Top 50 SKUs for ${filtSm}</div></div>
+            <table class="data-table">
+              <thead><tr>
+                <th style="text-align:left">SKU</th>
+                <th style="text-align:left">Category</th>
+                <th style="text-align:right">Sales 25</th>
+                <th style="text-align:right">Sales 26</th>
+                <th style="text-align:right">Return 26 %</th>
+                <th style="text-align:right">Growth Ton</th>
+                <th style="text-align:center">Growth %</th>
+              </tr></thead>
+              <tbody>${sSkuView.slice(0, 50).map(c => {
+                const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
+                const gAbs = s26 - s25;
+                const g = grow(s26, s25);
+                const rp26 = retP(s26, r26);
+                return \`<tr>
+                  <td style="text-align:left"><strong>\${c.product}</strong><br><span style="font-size:10px;opacity:0.6">\${c.code}</span></td>
+                  <td style="text-align:left; color:\${catColor(c.category)}; font-weight:bold;">\${c.category}</td>
+                  <td class="num">\${fmt(s25)}</td>
+                  <td class="num" style="color:\${C.cyan}">\${fmt(s26)}</td>
+                  <td class="num" style="color:\${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">\${rp26.toFixed(1)}%</td>
+                  <td class="num">\${fmt(gAbs)}</td>
+                  <td class="num">\${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+                </tr>\`;
+              }).join('')}</tbody>
+            </table>
+          </div>
+        `;
+      });
+    }
   }, 50);
 }
 

@@ -127,12 +127,14 @@ function resolve(acc) {
 // ─────────────────────────────────────────────────────────────────
 function buildLookups(pd) {
   if (pd._lookups) return pd._lookups;
-  const { strings, productMap, categoryMap, channelMap } = pd;
+  const { strings, productMap, categoryMap, channelMap, managerMap, outletMap } = pd;
 
   // For each string ID, pre-compute its derived values
-  const isRINV_arr = new Uint8Array(strings.length);   // 1 if type='RINV'
-  const ch_arr     = new Array(strings.length);         // channel for customer IDs
-  const ca_arr     = new Array(strings.length);         // category for product code IDs
+  const isRINV_arr  = new Uint8Array(strings.length);   // 1 if type='RINV'
+  const ch_arr      = new Array(strings.length);        // channel for customer IDs
+  const ca_arr      = new Array(strings.length);        // category for product code IDs
+  const manager_arr = new Array(strings.length);        // manager for customer IDs
+  const outlet_arr  = new Array(strings.length);        // english outlet name for customer IDs
 
   for (let i = 0; i < strings.length; i++) {
     const s = strings[i];
@@ -147,12 +149,15 @@ function buildLookups(pd) {
       const codeM = s.match(/^\[([^\]]+)\]/);
       if (codeM) ch = channelMap['__code__' + codeM[1]];
     }
-    ch_arr[i]     = ch || 'Other';
+    ch_arr[i] = ch || 'Other';
+    ca_arr[i] = categoryMap[s] || 'Unknown';
     
-    ca_arr[i]     = categoryMap[s] || 'Unknown';
+    // Store manager and outlet English names
+    manager_arr[i] = (managerMap && managerMap[s]) ? managerMap[s] : 'Unassigned';
+    outlet_arr[i]  = (outletMap && outletMap[s]) ? outletMap[s] : s; // default to original partner name
   }
 
-  pd._lookups = { isRINV_arr, ch_arr, ca_arr };
+  pd._lookups = { isRINV_arr, ch_arr, ca_arr, manager_arr, outlet_arr };
   return pd._lookups;
 }
 
@@ -160,8 +165,8 @@ function buildLookups(pd) {
 // Aggregation engine
 // ─────────────────────────────────────────────────────────────────
 function aggregateRows(rows, monthSet, filters, lookups, strings) {
-  const { chFilter, caFilter, cuFilter } = filters;
-  const { isRINV_arr, ch_arr, ca_arr } = lookups;
+  const { chFilter, caFilter, cuFilter, smFilter, ouFilter } = filters;
+  const { isRINV_arr, ch_arr, ca_arr, manager_arr, outlet_arr } = lookups;
 
   const total      = newAcc();
   const byMonth    = {};
@@ -169,6 +174,8 @@ function aggregateRows(rows, monthSet, filters, lookups, strings) {
   const byProduct  = {};   // key: cd (string ID)
   const byCustomer = {};   // key: cu (string ID)
   const byChannel  = {};   // key: channel string
+  const byManager  = {};   // key: manager string
+  const byOutlet   = {};   // key: outlet string
   const custSet    = new Set();
 
   for (const r of rows) {
@@ -178,6 +185,12 @@ function aggregateRows(rows, monthSet, filters, lookups, strings) {
     const cu   = r[R.cu];
     const ch   = ch_arr[cu];
     if (chFilter && ch !== chFilter)   continue;
+    
+    const sm   = manager_arr[cu];
+    if (smFilter && sm !== smFilter)   continue;
+    
+    const ou   = outlet_arr[cu];
+    if (ouFilter && ou !== ouFilter)   continue;
 
     const cd   = r[R.cd];
     const ca   = ca_arr[cd];
@@ -196,14 +209,16 @@ function aggregateRows(rows, monthSet, filters, lookups, strings) {
     if (!byProduct[cd])  byProduct[cd]  = newAcc();
     if (!byCustomer[cu]) byCustomer[cu] = newAcc();
     if (!byChannel[ch])  byChannel[ch]  = newAcc();
+    if (!byManager[sm])  byManager[sm]  = newAcc();
+    if (!byOutlet[ou])   byOutlet[ou]   = newAcc();
 
-    const accs = [total, byMonth[mo], byCategory[ca], byProduct[cd], byCustomer[cu], byChannel[ch]];
+    const accs = [total, byMonth[mo], byCategory[ca], byProduct[cd], byCustomer[cu], byChannel[ch], byManager[sm], byOutlet[ou]];
     for (const acc of accs) feed(acc, rinv, rf_r, tn, ct, cp);
 
     custSet.add(cu);
   }
 
-  return { total, byMonth, byCategory, byProduct, byCustomer, byChannel, custSet };
+  return { total, byMonth, byCategory, byProduct, byCustomer, byChannel, byManager, byOutlet, custSet };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -245,9 +260,12 @@ function buildResponse(pd, months, rawFilters) {
   const filters = {
     chFilter: rawFilters.channel   || null,
     caFilter: rawFilters.category  || null,
+    smFilter: rawFilters.sm        || null,
+    ouFilter: rawFilters.ou        || null,
     cuFilter: rawFilters.customer !== undefined
       ? (() => {
           let idx = strings.indexOf(rawFilters.customer);
+          if (idx === -1) idx = lookups.outlet_arr.indexOf(rawFilters.customer);
           if (idx === -1) idx = strings.findIndex(s => s.replace(/^\[.*?\]\s*/, '').trim() === rawFilters.customer);
           return idx;
         })()
@@ -363,11 +381,30 @@ function buildResponse(pd, months, rawFilters) {
     if (!cust) continue;
     const r25 = resolve(agg25.byCustomer[cuId] || newAcc());
     const r26 = resolve(agg26.byCustomer[cuId] || newAcc());
+    const outletName = lookups.outlet_arr[cuId] || cust;
     customer_data.push({
-      customer: cust,
+      customer: outletName,
+      original_customer: cust,
+      manager: lookups.manager_arr[cuId] || 'Unassigned',
       channel:  channelMap[cust] || 'Other',
       classification: classMap ? (classMap[cust] || '–') : '–',
       in_25:    cuIds25.has(cuId),
+      ton:    { s25: r25.ton.s,    r25: r25.ton.r,    s26: r26.ton.s,    r26: r26.ton.r    },
+      carton: { s25: r25.carton.s, r25: r25.carton.r, s26: r26.carton.s, r26: r26.carton.r },
+      cups:   { s25: r25.cups.s,   r25: r25.cups.r,   s26: r26.cups.s,   r26: r26.cups.r   },
+    });
+  }
+
+  // ── manager_data ──────────────────────────────────────────────
+  const allMngrs = new Set([...Object.keys(agg25.byManager), ...Object.keys(agg26.byManager)]);
+  const manager_data = [];
+  for (const sm of allMngrs) {
+    if (!sm) continue;
+    const r25 = resolve(agg25.byManager[sm] || newAcc());
+    const r26 = resolve(agg26.byManager[sm] || newAcc());
+    
+    manager_data.push({
+      manager: sm,
       ton:    { s25: r25.ton.s,    r25: r25.ton.r,    s26: r26.ton.s,    r26: r26.ton.r    },
       carton: { s25: r25.carton.s, r25: r25.carton.r, s26: r26.carton.s, r26: r26.carton.r },
       cups:   { s25: r25.cups.s,   r25: r25.cups.r,   s26: r26.cups.s,   r26: r26.cups.r   },
@@ -388,7 +425,6 @@ function buildResponse(pd, months, rawFilters) {
     const ch_monthly = MONTHS_FULL.map((name, idx) => {
       const m  = idx + 1;
       const ms = new Set([m]);
-      const nf = { chFilter: ch, caFilter: null, cuFilter: undefined };
       const cm25 = resolve(aggregateRows(rows25.filter(r => lookups.ch_arr[r[R.cu]] === ch), ms, {caFilter:null,cuFilter:undefined,chFilter:ch}, lookups, strings).total);
       const cm26 = resolve(aggregateRows(rows26.filter(r => lookups.ch_arr[r[R.cu]] === ch), ms, {caFilter:null,cuFilter:undefined,chFilter:ch}, lookups, strings).total);
       return {
@@ -410,7 +446,7 @@ function buildResponse(pd, months, rawFilters) {
     });
   }
 
-  return { success: true, meta, monthly_data, category_data, product_data, customer_data, channel_data };
+  return { success: true, meta, monthly_data, category_data, product_data, customer_data, manager_data, channel_data };
 }
 
 // ─────────────────────────────────────────────────────────────────
