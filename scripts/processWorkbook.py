@@ -185,10 +185,13 @@ def parse_actual(ws, channel_map, ST, class_map, manager_map, outlet_map,
                      rd.get("Invoice Partner Display Name.1") or
                      rd.get("Invoice Partner Display Name") or
                      rd.get("Partner") or "")
-        # Outlet key: use Partner + Outlet column (one per branch)
+        # Fallback outlet name if Outlet Code is missing
         partner_outlet = ss(rd.get("Partner + Outlet") or partner)
         # Outlet Code — unique branch identifier
         oc = ss(rd.get("Outlet Code") or "")
+        
+        # Use Outlet Code as the unique key, fallback to partner_outlet
+        outlet_key = oc if oc else partner_outlet
 
         tag = ss(rd.get("Tags") or rd.get("tags") or
                  rd.get("Classification") or rd.get("Customer Category") or "")
@@ -202,34 +205,36 @@ def parse_actual(ws, channel_map, ST, class_map, manager_map, outlet_map,
             if norm != partner: channel_map[norm] = ch
             m2 = re.match(r"^\[([^\]]+)\]", partner)
             if m2: channel_map["__code__" + m2.group(1)] = ch
-            # Also map partner_outlet to same channel
-            if partner_outlet != partner:
-                channel_map[partner_outlet] = ch
+            
+        if outlet_key and ch and outlet_key != partner:
+            channel_map[outlet_key] = ch
 
         sm = ss(rd.get("Sales Manager") or "")
-        pe = ss(rd.get("Partner English") or "")
-        # Manager / outlet name maps keyed by partner_outlet
-        if partner_outlet and sm: manager_map[partner_outlet] = sm
-        if partner_outlet and pe: outlet_map[partner_outlet] = pe
+        # English outlet name
+        pe = ss(rd.get("Invoice Partner Display Name.2") or rd.get("Partner English") or partner_outlet)
+        
+        # Manager / outlet name maps keyed by unique outlet_key
+        if outlet_key and sm: manager_map[outlet_key] = sm
+        if outlet_key and pe: outlet_map[outlet_key] = pe
         # Also keep manager for the parent customer
         if partner and sm: manager_map[partner] = sm
 
-        # Store outlet code and parent partner for each partner_outlet
-        if partner_outlet and oc:
-            outlet_code_map[partner_outlet] = oc
-        if partner_outlet:
-            partner_map[partner_outlet] = partner
+        # Store outlet code and parent partner for each outlet_key
+        if outlet_key and oc:
+            outlet_code_map[outlet_key] = oc
+        if outlet_key:
+            partner_map[outlet_key] = partner
 
         code = ss(rd.get("Code") or "")
         inv_type = ss(rd.get("Invoice lines/Number Type") or "")
         ref      = ss(rd.get("Invoice lines/Reference") or "")
         rf_r = 1 if (ref and ref[0].upper() == "R") else 0
 
-        # cu is now keyed by partner_outlet (outlet-level granularity)
+        # cu is now keyed by unique branch identifier
         out.append([
             month,
             ST.intern(code),
-            ST.intern(partner_outlet),
+            ST.intern(outlet_key),
             ST.intern(inv_type),
             rf_r,
             tn, ct, cp,

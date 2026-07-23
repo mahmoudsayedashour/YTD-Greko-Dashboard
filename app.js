@@ -685,7 +685,7 @@ window.toggleCustomerRow = (rowId, origCustomerName) => {
               const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
               const rp25 = retP(s25, r25);
               const rp26 = retP(s26, r26);
-              return `<tr id="${outId}" class="row-clickable" onclick="toggleCustomerOutletRow('${outId}', '${(c.original_customer||'').replace(/'/g,"\\'")}', '${c.customer.replace(/'/g,"\\'")}')">
+              return `<tr id="${outId}" class="row-clickable" onclick="toggleCustomerOutletRow('${outId}', '${(c.original_customer||'').replace(/'/g,"\\'")}', '${c.customer.replace(/'/g,"\\'")}', '${c.outlet_code}')">
                 <td><span class="expand-icon">▶</span> ${i + 1}</td>
                 <td style="text-align:left; color:${C.cyan}; font-weight:bold;">${c.customer}</td>
                 <td class="num">${fmt(s25)}</td>
@@ -720,9 +720,9 @@ window.toggleCustomerRow = (rowId, origCustomerName) => {
   });
 };
 
-window.toggleCustomerOutletRow = (rowId, origCustomerName, outletName) => {
+window.toggleCustomerOutletRow = (rowId, origCustomerName, outletName, outletCode) => {
   toggleRowLevel(rowId, 'L2', 11, async () => {
-    const data = await fetchDrilldownData({ customer: origCustomerName, ou: outletName });
+    const data = await fetchDrilldownData({ customer: origCustomerName, oc: outletCode, ou: outletName });
     const M = STATE.measure;
     
     const catView = data.category_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0);
@@ -754,7 +754,7 @@ window.toggleCustomerOutletRow = (rowId, origCustomerName, outletName) => {
               const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
               const rp25 = retP(s25, r25);
               const rp26 = retP(s26, r26);
-              return `<tr id="${catId}" class="row-clickable" onclick="toggleCategoryRow('${catId}', '${c.category}', 'outlet', '${outletName.replace(/'/g,"\\'")}', '${origCustomerName.replace(/'/g,"\\'")}')">
+              return `<tr id="${catId}" class="row-clickable" onclick="toggleCategoryRow('${catId}', '${c.category}', 'outlet', '${outletName.replace(/'/g,"\\'")}', '${origCustomerName.replace(/'/g,"\\'")}', '${outletCode}')">
                 <td><span class="expand-icon">▶</span> ${i + 1}</td>
                 <td style="text-align:left; color:${catColor(c.category)}; font-weight:bold;">${c.category}</td>
                 <td class="num">${fmt(s25)}</td>
@@ -776,7 +776,7 @@ window.toggleCustomerOutletRow = (rowId, origCustomerName, outletName) => {
   });
 };
 
-window.toggleCategoryRow = (rowId, categoryName, contextType = null, contextValue = null, extraContext = null) => {
+window.toggleCategoryRow = (rowId, categoryName, contextType = null, contextValue = null, extraContext = null, outletCode = null) => {
   const level = contextType === 'outlet' ? 'L3' : (contextType ? 'L2' : 'L1');
   toggleRowLevel(rowId, level, 11, async () => {
     let sourceData = STATE.data;
@@ -785,7 +785,7 @@ window.toggleCategoryRow = (rowId, categoryName, contextType = null, contextValu
     } else if (contextType === 'customer') {
        sourceData = await fetchDrilldownData({ customer: contextValue });
     } else if (contextType === 'outlet') {
-       sourceData = await fetchDrilldownData({ customer: extraContext, ou: contextValue });
+       sourceData = await fetchDrilldownData({ customer: extraContext, oc: outletCode, ou: contextValue });
     }
     const M = STATE.measure;
     const catRow = sourceData.category_data.find(c => c.category === categoryName);

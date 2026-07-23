@@ -169,8 +169,8 @@ function buildLookups(pd) {
 // Aggregation engine
 // ─────────────────────────────────────────────────────────────────
 function aggregateRows(rows, monthSet, filters, lookups, strings) {
-  const { chFilter, caFilter, cuFilter, smFilter, ouFilter } = filters;
-  const { isRINV_arr, ch_arr, ca_arr, manager_arr, outlet_arr, partner_arr } = lookups;
+  const { chFilter, caFilter, cuFilter, smFilter, ouFilter, ocFilter } = filters;
+  const { isRINV_arr, ch_arr, ca_arr, manager_arr, outlet_arr, outlet_code_arr, partner_arr } = lookups;
 
   const total      = newAcc();
   const byMonth    = {};
@@ -195,6 +195,9 @@ function aggregateRows(rows, monthSet, filters, lookups, strings) {
     
     const ou   = outlet_arr[cu];
     if (ouFilter && ou !== ouFilter)   continue;
+
+    const oc   = outlet_code_arr[cu];
+    if (ocFilter && oc !== ocFilter)   continue;
 
     const cd   = r[R.cd];
     const ca   = ca_arr[cd];
@@ -222,7 +225,8 @@ function aggregateRows(rows, monthSet, filters, lookups, strings) {
     const accs = [total, byMonth[mo], byCategory[ca], byProduct[cd], byCustomer[cu], byChannel[ch], byManager[sm], byOutlet[ou]];
     for (const acc of accs) feed(acc, rinv, rf_r, tn, ct, cp);
 
-    custSet.add(cu);
+    const origCust = partner_arr ? partner_arr[cu] : strings[cu];
+    custSet.add(origCust);
   }
 
   return { total, byMonth, byCategory, byProduct, byCustomer, byChannel, byManager, byOutlet, custSet };
@@ -269,6 +273,7 @@ function buildResponse(pd, months, rawFilters) {
     caFilter: rawFilters.category  || null,
     smFilter: rawFilters.sm        || null,
     ouFilter: rawFilters.ou        || null,
+    ocFilter: rawFilters.oc        || null,
     cuFilter: rawFilters.customer !== undefined ? rawFilters.customer : undefined,
   };
 
