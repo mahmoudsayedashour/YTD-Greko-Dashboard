@@ -238,6 +238,18 @@ function kpi(icon, label, value, change, accent, sub = '') {
   </div>`;
 }
 
+// Two-row KPI showing 2025 vs 2026 comparison
+function kpiDual(icon, label, val25, val26, accent) {
+  const diff = val26 - val25;
+  const arrow = diff > 0 ? `<span style="color:#22d3a4">▲ ${diff}</span>` : diff < 0 ? `<span style="color:#f87171">▼ ${Math.abs(diff)}</span>` : `<span style="color:#8899bb">─ 0</span>`;
+  return `<div class="kpi-card ${accent}">
+    <span class="kpi-icon">${icon}</span>
+    <div class="kpi-value">${val26}</div>
+    <div class="kpi-label">${label}</div>
+    <div class="kpi-sub" style="font-size:11px;margin-top:4px">2025: <strong>${val25}</strong> &nbsp;${arrow}</div>
+  </div>`;
+}
+
 function card(title, sub, inner) {
   return `<div class="chart-card"><div class="chart-header"><div>
     <div class="chart-title">${title}</div>
@@ -569,7 +581,10 @@ window.toggleSmRow = (rowId, smName) => {
     const custsForSm = STATE.data.customer_data.filter(c => c.manager === smName && (c[M].s26 > 0 || c[M].s25 > 0));
     
     const distinctCustomers = new Set(custsForSm.map(c => cleanEn(c.original_customer || c.customer))).size;
-    const distinctOutlets = custsForSm.length;
+    const custs25sm = custsForSm.filter(c => c[M].s25 > 0);
+    const custs26sm = custsForSm.filter(c => c[M].s26 > 0);
+    const distinctOutlets25sm = new Set(custs25sm.map(c => c.customer)).size;
+    const distinctOutlets26sm = new Set(custs26sm.map(c => c.customer)).size;
     
     const s25 = smData[M].s25;
     const s26 = smData[M].s26;
@@ -580,13 +595,60 @@ window.toggleSmRow = (rowId, smName) => {
 
     const html = renderSummaryCard(smName + ' Summary', [
       { label: 'Total Customers', value: distinctCustomers },
-      { label: 'Total Outlets', value: distinctOutlets },
+      { label: 'Outlets 2025', value: distinctOutlets25sm },
+      { label: 'Outlets 2026', value: distinctOutlets26sm },
       { label: 'Sales Ton', value: fmt(s26), color: C.cyan },
       { label: 'Growth %', value: fmtP(g), color: g >= 0 ? C.green : C.red },
       { label: 'Top Outlet (Sales)', value: topSalesOutlet ? topSalesOutlet.customer : 'N/A', color: C.gold },
       { label: 'Top Outlet (Return)', value: topRetOutlet && topRetOutlet[M].r26 > 0 ? topRetOutlet.customer : 'N/A', color: C.red },
     ]);
     return Promise.resolve(`<div class="nested-card">${html}</div>`);
+  });
+};
+
+window.toggleLostOutletRow = (rowId, origCustomerName, outletName) => {
+  toggleRowLevel(rowId, 'L1', 11, async () => {
+    // For lost outlets, we fetch 2025 data by drilling into the outlet
+    const data = await fetchDrilldownData({ customer: origCustomerName, ou: outletName });
+    const M = STATE.measure;
+    
+    // Show 2025 category breakdown (the outlet only had 2025 data)
+    const catView = data.category_data.filter(c => c[M].s25 > 0 || c[M].s26 > 0);
+    catView.sort((a,b) => b[M].s25 - a[M].s25);
+    
+    if (catView.length === 0) {
+      return `<div class="nested-card" style="padding:20px; text-align:center; color:#8899bb;">No category data found for this outlet.</div>`;
+    }
+
+    const tableHtml = `
+      <div class="nested-card" style="margin:0; box-shadow:none; border:none; padding:0; background:rgba(248,113,113,0.05);">
+        <div class="chart-header" style="margin-bottom:12px; padding:0;">
+          <div class="chart-title" style="font-size:12px; opacity:0.8; color:#f87171;">📋 2025 Category Breakdown – ${outletName}</div>
+        </div>
+        <div class="data-table-wrapper" style="max-height:350px;overflow-y:auto; border-radius:8px;">
+          <table class="data-table" style="margin:0;">
+            <thead style="position:sticky; top:0; z-index:3; background:var(--bg-card);"><tr>
+              <th style="width:28px"></th>
+              <th>#</th>
+              <th style="text-align:left">Category</th>
+              <th class="num">Sales Ton (2025)</th>
+              <th class="num">Return Ton (2025)</th>
+            </tr></thead>
+            <tbody>${catView.map((c, i) => {
+              const catId = `nested-lost-cat-${rowId}-${i}`;
+              return `<tr id="${catId}" class="row-clickable" onclick="toggleCategoryRow('${catId}', '${c.category}', 'outlet', '${outletName.replace(/'/g,"\\'")}', '${origCustomerName.replace(/'/g,"\\'")}')">
+                <td><span class="expand-icon">▶</span></td>
+                <td>${i + 1}</td>
+                <td style="text-align:left; color:${catColor(c.category)}; font-weight:bold;">${c.category}</td>
+                <td class="num" style="color:#f87171">${fmt(c[M].s25)}</td>
+                <td class="num">${fmt(c[M].r25)}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    return `<div class="nested-card">${tableHtml}</div>`;
   });
 };
 
@@ -1826,35 +1888,44 @@ function pgManagers(D) {
     custView = [...custsForSm].sort((a, b) => b[M].s26 - a[M].s26);
   }
 
-  const allCustsForView = D.customer_data.filter(c => (!filtSm || c.manager === filtSm) && (c[M].s26 > 0 || c[M].s25 > 0));
-  const distinctCustomers = new Set(allCustsForView.map(c => cleanEn(c.original_customer || c.customer))).size;
-  const distinctOutlets = new Set(allCustsForView.map(c => c.customer)).size;
-    const totalCompanySales26 = D.meta[M].s26 || 0;
-    const mgrContrib = totalCompanySales26 ? (totalSales26 / totalCompanySales26) * 100 : 0;
+  // All outlets in view (any year), for manager filter
+  const allCustsBase = D.customer_data.filter(c => !filtSm || c.manager === filtSm);
+  const custs25 = allCustsBase.filter(c => c[M].s25 > 0);
+  const custs26 = allCustsBase.filter(c => c[M].s26 > 0);
+  const distinctCustomers25 = new Set(custs25.map(c => cleanEn(c.original_customer || c.customer))).size;
+  const distinctCustomers26 = new Set(custs26.map(c => cleanEn(c.original_customer || c.customer))).size;
+  const distinctOutlets25 = new Set(custs25.map(c => c.customer)).size;
+  const distinctOutlets26 = new Set(custs26.map(c => c.customer)).size;
+  const totalCompanySales26 = D.meta[M].s26 || 0;
+  const mgrContrib = totalCompanySales26 ? (totalSales26 / totalCompanySales26) * 100 : 0;
 
-    document.getElementById('page-managers').innerHTML = `
-      ${renderInsightsBar(insights)}
-      <div class="channel-controls">
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <label style="font-size:12px;color:#8899bb">Sales Manager:</label>
-          <select id="sm-filter-sel" class="ch-select">
-            <option value="">All Managers</option>
-            ${smList.map(c => `<option value="${c}" ${filtSm === c ? 'selected' : ''}>${c}</option>`).join('')}
-          </select>
-        </div>
-      </div>
-      
-      <div class="kpi-grid">
-        ${kpi('👨‍💼', 'Total Customers', distinctCustomers, null, 'blue', '')}
-        ${kpi('🏪', 'Total Outlets', distinctOutlets, null, 'blue', '')}
-        ${kpi('📈', 'Growth %', fmtP(g), g, 'green', '')}
-        ${kpi('↩️', 'Return %', rp26.toFixed(1) + '%', rp26 > 10 ? -1 : 1, 'cyan', '')}
-        ${kpi('💰', 'Total Company Sales (Ton)', fmt(totalCompanySales26), null, 'gold', '')}
-        ${kpi('📊', 'Manager Contribution %', mgrContrib.toFixed(1) + '%', null, 'cyan', '')}
-      </div>
+  // Lost outlets: had sales in 2025 but zero in 2026
+  const lostOutlets = allCustsBase.filter(c => c[M].s25 > 0 && c[M].s26 === 0).sort((a,b) => b[M].s25 - a[M].s25);
 
-      ${!filtSm ? `
-        <!-- ALL MANAGERS VIEW -->
+  document.getElementById('page-managers').innerHTML = `
+    ${renderInsightsBar(insights)}
+    <div class="channel-controls">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label style="font-size:12px;color:#8899bb">Sales Manager:</label>
+        <select id="sm-filter-sel" class="ch-select">
+          <option value="">All Managers</option>
+          ${smList.map(c => `<option value="${c}" ${filtSm === c ? 'selected' : ''}>${c}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    
+    <div class="kpi-grid">
+      ${kpiDual('👨‍💼', 'Total Customers', distinctCustomers25, distinctCustomers26, 'blue')}
+      ${kpiDual('🏪', 'Total Outlets', distinctOutlets25, distinctOutlets26, 'blue')}
+      ${kpi('📈', 'Growth %', fmtP(g), g, 'green', '')}
+      ${kpi('↩️', 'Return %', rp26.toFixed(1) + '%', rp26 > 10 ? -1 : 1, 'cyan', '')}
+      ${kpi('💰', 'Total Company Sales (Ton)', fmt(totalCompanySales26), null, 'gold', '')}
+      ${kpi('📊', 'Manager Contribution %', mgrContrib.toFixed(1) + '%', null, 'cyan', '')}
+    </div>
+    </div>
+
+    ${!filtSm ? `
+      <!-- ALL MANAGERS VIEW -->
         <div class="chart-grid cols-2" style="margin-top:20px">
           ${card('📊 Sales by Manager', '2025 vs 2026', cw('sm-bars', '350'))}
           ${card('↩️ Returns by Manager', 'Return % 2026', cw('sm-ret-bars', '350'))}
@@ -1940,6 +2011,26 @@ function pgManagers(D) {
             </tbody>
           </table>
         </div>
+
+        ${lostOutlets.length > 0 ? `
+        <div class="chart-card" style="margin-top:20px; border-color:rgba(248,113,113,0.3);">
+          <div class="chart-header"><div class="chart-title" style="color:#f87171;">❌ Lost Outlets (${lostOutlets.length}) <span style="font-size:11px;opacity:0.6;font-weight:400">Had sales in 2025, zero in 2026 — Click ▶ to drill down → Category → SKU</span></div></div>
+          <div class="data-table-wrapper" style="max-height:300px;overflow-y:auto">
+            <table class="data-table">
+              <thead><tr>
+                <th style="width:28px"></th>
+                <th>#</th>
+                <th style="text-align:left">Outlet Name</th>
+                <th class="num">Sales Ton (2025)</th>
+                <th class="num">Return Ton (2025)</th>
+              </tr></thead>
+              <tbody>${lostOutlets.map((c, i) => {
+                const rowId = 'row-lost-' + i;
+                return '<tr id="' + rowId + '" class="row-clickable" onclick="toggleLostOutletRow(\'' + rowId + '\', \'' + (c.original_customer||'').replace(/\'/g,"\\'") + '\', \'' + c.customer.replace(/\'/g,"\\'") + '\')"><td><span class="expand-icon">▶</span></td><td>' + (i+1) + '</td><td><strong>' + c.customer + '</strong></td><td class="num" style="color:#f87171">' + fmt(c[M].s25) + '</td><td class="num">' + fmt(c[M].r25) + '</td></tr>';
+              }).join('')}</tbody>
+            </table>
+          </div>
+        </div>` : ''}
       `}
     `;
 
