@@ -170,7 +170,7 @@ function buildLookups(pd) {
 // ─────────────────────────────────────────────────────────────────
 function aggregateRows(rows, monthSet, filters, lookups, strings) {
   const { chFilter, caFilter, cuFilter, smFilter, ouFilter } = filters;
-  const { isRINV_arr, ch_arr, ca_arr, manager_arr, outlet_arr } = lookups;
+  const { isRINV_arr, ch_arr, ca_arr, manager_arr, outlet_arr, partner_arr } = lookups;
 
   const total      = newAcc();
   const byMonth    = {};
@@ -199,7 +199,10 @@ function aggregateRows(rows, monthSet, filters, lookups, strings) {
     const cd   = r[R.cd];
     const ca   = ca_arr[cd];
     if (caFilter && ca !== caFilter)   continue;
-    if (cuFilter !== undefined && cu !== cuFilter) continue;
+    if (cuFilter !== undefined) {
+      const origCust = partner_arr ? partner_arr[cu] : strings[cu];
+      if (origCust !== cuFilter && strings[cu] !== cuFilter && ou !== cuFilter) continue;
+    }
 
     const tId  = r[R.t];
     const rf_r = r[R.rf_r];
@@ -266,14 +269,7 @@ function buildResponse(pd, months, rawFilters) {
     caFilter: rawFilters.category  || null,
     smFilter: rawFilters.sm        || null,
     ouFilter: rawFilters.ou        || null,
-    cuFilter: rawFilters.customer !== undefined
-      ? (() => {
-          let idx = strings.indexOf(rawFilters.customer);
-          if (idx === -1) idx = lookups.outlet_arr.indexOf(rawFilters.customer);
-          if (idx === -1) idx = strings.findIndex(s => s.replace(/^\[.*?\]\s*/, '').trim() === rawFilters.customer);
-          return idx;
-        })()
-      : undefined,
+    cuFilter: rawFilters.customer !== undefined ? rawFilters.customer : undefined,
   };
 
   const agg25 = aggregateRows(rows25, monthSet, filters, lookups, strings);
