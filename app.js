@@ -348,6 +348,27 @@ async function fetchData(months) {
 
 
 // ═══════════════════════════════════════════════════════════════
+// DISPLAY NAME HELPERS
+// ═══════════════════════════════════════════════════════════════
+/**
+ * Clean an Invoice lines/Partner value to English-only display:
+ *  - Remove leading [CODE] bracket prefix
+ *  - Remove Arabic Unicode characters (U+0600–U+06FF) and surrounding whitespace
+ *  - Remove anything inside parentheses  (Arabic or noise)
+ *  - Collapse extra whitespace
+ */
+function cleanEn(s) {
+  if (!s) return '';
+  let r = s
+    .replace(/^\[.*?\]\s*/, '')          // strip [CODE] prefix
+    .replace(/\([\s\S]*?\)/g, '')        // strip (…) blocks
+    .replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+/g, '') // Arabic
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return r || s.replace(/^\[.*?\]\s*/, '').trim(); // fallback: at least strip bracket
+}
+
+// ═══════════════════════════════════════════════════════════════
 // DRILL-DOWN LOGIC & CACHING
 // ═══════════════════════════════════════════════════════════════
 const API_CACHE = {};
@@ -669,6 +690,87 @@ window.toggleChannelRow = (rowId, channelName) => {
     `;
     
     return `<div class="nested-card">${tableHtml}</div>`;
+  });
+};
+
+// Outlet → Category → SKU (Sales Managers page)
+window.toggleManagerOutletRow = (rowId, customerName) => {
+  toggleRowLevel(rowId, 'L1', 8, async () => {
+    const data = await fetchDrilldownData({ customer: customerName });
+    const M = STATE.measure;
+    const catView = data.category_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0).sort((a,b) => b[M].s26 - a[M].s26);
+    const catRows = catView.map((c, i) => {
+      const catId = 'smout-cat-' + rowId.replace(/\W/g,'') + '-' + i;
+      const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
+      const gAbs = s26 - s25;
+      const g = grow(s26, s25);
+      const rp26 = retP(s26, r26);
+      return '<tr id="' + catId + '" class="row-clickable" onclick="toggleCategoryRow(\'' + catId + '\',\'' + c.category.replace(/'/g,"\\'") + '\',\'customer\',\'' + customerName.replace(/'/g,"\\'") + '\')">' +
+        '<td><span class="expand-icon">▶</span> ' + (i+1) + '</td>' +
+        '<td style="text-align:left; color:' + catColor(c.category) + '; font-weight:bold;">' + c.category + '</td>' +
+        '<td class="num">' + fmt(s25) + '</td>' +
+        '<td class="num" style="color:' + C.cyan + '">' + fmt(s26) + '</td>' +
+        '<td class="num" style="color:' + (rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green) + '">' + rp26.toFixed(1) + '%</td>' +
+        '<td class="num">' + fmt(gAbs) + '</td>' +
+        '<td class="num">' + badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down') + '</td>' +
+        '</tr>';
+    }).join('');
+    return '<div class="nested-card" style="margin:0;box-shadow:none;border:none;padding:0;">' +
+      '<div class="chart-header" style="margin-bottom:12px;padding:0;"><div class="chart-title" style="font-size:12px;opacity:0.8;">📋 Category Breakdown — ' + cleanEn(customerName) + '</div></div>' +
+      '<table class="data-table" style="margin:0;"><thead><tr>' +
+        '<th>#</th><th style="text-align:left">Category</th>' +
+        '<th class="num">Sales 25</th><th class="num">Sales 26</th>' +
+        '<th class="num">Return 26%</th><th class="num">Growth Ton</th><th class="num">Growth%</th>' +
+      '</tr></thead><tbody>' + catRows + '</tbody></table></div>';
+  });
+};
+
+// Category → SKU (for Growth and Returns tables)
+window.toggleGrowthCatRow = (rowId, categoryName) => {
+  toggleRowLevel(rowId, 'L1', 5, () => {
+    const M = STATE.measure;
+    const catSkus = STATE.data.product_data.filter(p => p.category === categoryName && (p[M].s26 > 0 || p[M].s25 > 0)).sort((a,b) => b[M].s26 - a[M].s26);
+    const rows = catSkus.map((p, i) => {
+      const s25 = p[M].s25, s26 = p[M].s26;
+      const g = grow(s26, s25);
+      return '<tr><td>' + (i+1) + '</td>' +
+        '<td style="text-align:left"><strong>' + p.product + '</strong><br><span style="font-size:10px;opacity:0.6">' + p.code + '</span></td>' +
+        '<td class="num">' + fmt(s25) + '</td>' +
+        '<td class="num" style="color:' + C.cyan + '">' + fmt(s26) + '</td>' +
+        '<td class="num">' + badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down') + '</td></tr>';
+    }).join('');
+    return Promise.resolve(
+      '<div class="nested-card" style="margin:0;box-shadow:none;border:none;padding:0;">' +
+      '<div class="chart-header" style="margin-bottom:12px;padding:0;"><div class="chart-title" style="font-size:12px;opacity:0.8;">📋 SKUs — ' + categoryName + '</div></div>' +
+      '<table class="data-table" style="margin:0;"><thead><tr>' +
+        '<th>#</th><th style="text-align:left">SKU</th>' +
+        '<th class="num">Sales 25</th><th class="num">Sales 26</th><th class="num">Growth%</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+    );
+  });
+};
+
+window.toggleReturnCatRow = (rowId, categoryName) => {
+  toggleRowLevel(rowId, 'L1', 5, () => {
+    const M = STATE.measure;
+    const catSkus = STATE.data.product_data.filter(p => p.category === categoryName && (p[M].r26 > 0 || p[M].r25 > 0)).sort((a,b) => b[M].r26 - a[M].r26);
+    const rows = catSkus.map((p, i) => {
+      const r25 = p[M].r25, r26 = p[M].r26, s25 = p[M].s25, s26 = p[M].s26;
+      const rp25 = retP(s25, r25), rp26 = retP(s26, r26);
+      return '<tr><td>' + (i+1) + '</td>' +
+        '<td style="text-align:left"><strong>' + p.product + '</strong><br><span style="font-size:10px;opacity:0.6">' + p.code + '</span></td>' +
+        '<td class="num">' + fmt(r25) + '</td>' +
+        '<td class="num" style="color:' + C.red + '">' + fmt(r26) + '</td>' +
+        '<td class="num" style="color:' + (rp26 > rp25 ? C.red : C.green) + '">' + rp26.toFixed(1) + '%</td></tr>';
+    }).join('');
+    return Promise.resolve(
+      '<div class="nested-card" style="margin:0;box-shadow:none;border:none;padding:0;">' +
+      '<div class="chart-header" style="margin-bottom:12px;padding:0;"><div class="chart-title" style="font-size:12px;opacity:0.8;">📋 SKU Returns — ' + categoryName + '</div></div>' +
+      '<table class="data-table" style="margin:0;"><thead><tr>' +
+        '<th>#</th><th style="text-align:left">SKU</th>' +
+        '<th class="num">Return 25</th><th class="num">Return 26</th><th class="num">Ret% 26</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+    );
   });
 };
 
@@ -1057,8 +1159,8 @@ function pgCustomers(D) {
     `🏆 Top 10 Customers Sales: <span style="color:${C.gold}">${fmt(top10SalesVal)}</span> ${unitLabel}`,
     `📊 Top 10 Customers Contribution: <span style="color:${C.cyan}">${top10ContribPct.toFixed(1)}%</span> of total company sales`,
     `↩ Top 10 Customers Returns: <span style="color:${C.red}">${fmt(top10RetVal)}</span> ${unitLabel}`,
-    `👤 Top Selling Customer: <span style="color:${C.cyan}">${topSellingCust ? trunc(topSellingCust.customer, 25) : 'N/A'}</span>`,
-    `🔄 Top Return Customer: <span style="color:${C.red}">${topRetCust ? trunc(topRetCust.customer, 25) : 'N/A'}</span>`,
+    `👤 Top Selling Customer: <span style="color:${C.cyan}">${topSellingCust ? trunc(cleanEn(topSellingCust.original_customer || topSellingCust.customer), 25) : 'N/A'}</span>`,
+    `🔄 Top Return Customer: <span style="color:${C.red}">${topRetCust ? trunc(cleanEn(topRetCust.original_customer || topRetCust.customer), 25) : 'N/A'}</span>`,
     `📦 Top Partial Return Customer: <span style="color:${C.gold}">${topPartialCust ? trunc(topPartialCust.customer, 25) : 'N/A'}</span>`
   ];
 
@@ -1079,11 +1181,11 @@ function pgCustomers(D) {
       ${kpi('❌', 'Lost Customers', lost.length.toString(), null, 'red', 'Purchased 25, zero 26')}
     </div>
     <div class="chart-grid cols-2">
-      ${card('🏆 Top 10 Customers (Gold)', 'By sales 2026', cw('ch-c-top', '300'))}
-      ${card('↩️ Top 10 by Return Ton', 'Sorted by Return Ton ↓', cw('ch-c-ret', '300'))}
+      ${card('🏆 Top 10 Customers (Gold)', 'By sales 2026 — Invoice lines/Partner (English)', cw('ch-c-top', '300'))}
+      ${card('↩️ Top 10 by Return Ton', 'Sorted by Return Ton ↓ — Invoice lines/Partner (English)', cw('ch-c-ret', '300'))}
     </div>
     <div class="chart-card" style="margin-top:20px">
-      <div class="chart-header"><div class="chart-title">📋 Customer Detail Table</div></div>
+      <div class="chart-header"><div class="chart-title">📋 Customer Detail Table <span style="font-size:11px;opacity:0.6;font-weight:400">Click ▶ to drill down → Category → SKU</span></div></div>
       <div class="data-table-wrapper" style="max-height:400px;overflow-y:auto">
         <table class="data-table">
           <thead><tr>
@@ -1098,15 +1200,16 @@ function pgCustomers(D) {
           </tr></thead>
           <tbody>${sortData(cs.map(c => ({ ...c, name: c.customer }))).map((c, i) => {
             const rowId = `row-cust-${i}`;
+            const origName = c.original_customer || c.customer;
             const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r25 = c[M].r25, r26 = c[M].r26;
             const gAbs = s26 - s25;
             const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
             const rp25 = retP(s25, r25);
             const rp26 = retP(s26, r26);
             const tier = i < 10 ? '🥇' : i < 10 + silver.length ? '🥈' : '🥉';
-            return `<tr id="${rowId}" class="row-clickable" onclick="toggleCustomerRow('${rowId}', '${c.customer}')">
+            return `<tr id="${rowId}" class="row-clickable" onclick="toggleCustomerRow('${rowId}', '${origName.replace(/'/g,"\\'")}')">
               <td><span class="expand-icon">▶</span> ${tier} ${i + 1}</td>
-              <td><strong>${trunc(c.customer, 28)}</strong></td>
+              <td><strong>${trunc(c.customer, 28)}</strong><br><span style="font-size:10px;opacity:0.5">${trunc(cleanEn(origName), 28)}</span></td>
               <td class="num">${fmt(s25)}</td>
               <td class="num">${rp25.toFixed(1)}%</td>
               <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
@@ -1129,13 +1232,17 @@ function pgCustomers(D) {
     </div>
   `;
   setTimeout(() => {
+    // Top 10 Gold chart — use cleaned Invoice lines/Partner as label
     mkChart('ch-c-top', { type: 'bar',
-      data: { labels: csSorted.slice(0, 10).map(c => c.customer), datasets: [{ data: csSorted.slice(0, 10).map(c => c[M].s26), backgroundColor: C.gold + 'CC', borderRadius: 4 }] },
+      data: { labels: csSorted.slice(0, 10).map(c => cleanEn(c.original_customer || c.customer)),
+        datasets: [{ data: csSorted.slice(0, 10).map(c => c[M].s26), backgroundColor: C.gold + 'CC', borderRadius: 4 }] },
       options: { ...barOpts(true), layout: { padding: { left: 50 } } },
     });
+    // Top 10 Return chart — use cleaned Invoice lines/Partner as label
     const topRet = [...cs].filter(c => c[M].r26 > 0).sort((a, b) => b[M].r26 - a[M].r26).slice(0, 10);
     mkChart('ch-c-ret', { type: 'bar',
-      data: { labels: topRet.map(c => c.customer), datasets: [{ data: topRet.map(c => c[M].r26), backgroundColor: C.red + 'CC', borderRadius: 4 }] },
+      data: { labels: topRet.map(c => cleanEn(c.original_customer || c.customer)),
+        datasets: [{ data: topRet.map(c => c[M].r26), backgroundColor: C.red + 'CC', borderRadius: 4 }] },
       options: { ...barOpts(true), layout: { padding: { left: 50 } } },
     });
   }, 50);
@@ -1440,16 +1547,19 @@ function pgReturns(D) {
       ${card('📊 Partial Returns by Category', '', cw('ch-r-partial', '300'))}
     </div>
     <div class="chart-card" style="margin-top:20px">
-      <div class="chart-header"><div class="chart-title">📋 Return Details (Category Level)</div></div>
+      <div class="chart-header"><div class="chart-title">📋 Return Details (Category Level) <span style="font-size:11px;opacity:0.6;font-weight:400">Click ▶ to expand → SKU</span></div></div>
       <table class="data-table">
         <thead><tr>
+          <th style="width:28px"></th>
           <th>Category</th><th class="num">Return 25</th><th class="num">Return 26</th>
           <th class="num">Ret% 25</th><th class="num">Ret% 26</th>
         </tr></thead>
-        <tbody>${cats.map(c => {
+        <tbody>${cats.map((c, i) => {
+          const rowId = `row-rcat-${i}`;
           const r25 = c[M].r25, r26 = c[M].r26;
           const rp25 = retP(c[M].s25, r25), rp26 = retP(c[M].s26, r26);
-          return `<tr>
+          return `<tr id="${rowId}" class="row-clickable" onclick="toggleReturnCatRow('${rowId}', '${c.category.replace(/'/g,"\\'")}')">
+            <td><span class="expand-icon">▶</span></td>
             <td style="color:${catColor(c.category)}">${c.category}</td>
             <td class="num">${fmt(r25)}</td>
             <td class="num" style="color:${C.red}">${fmt(r26)}</td>
@@ -1516,19 +1626,22 @@ function pgGrowth(D) {
       ${card('📈 Growth % by Category', 'Relative Δ', cw('ch-g-catp', '350'))}
     </div>
     <div class="chart-card" style="margin-top:20px">
-      <div class="chart-header"><div class="chart-title">📋 Growth Detail Table</div></div>
+      <div class="chart-header"><div class="chart-title">📋 Growth Detail Table <span style="font-size:11px;opacity:0.6;font-weight:400">Click ▶ to expand → SKU</span></div></div>
       <table class="data-table">
         <thead><tr>
+          <th style="width:28px"></th>
           ${thSort('Category', 'name')}
           ${thSort('Sales 25', 's25')}
           ${thSort('Sales 26', 's26')}
           ${thSort('Growth Δ', 'grow')}
           ${thSort('Achievement', 'ach26')}
         </tr></thead>
-        <tbody>${cats.map(c => {
+        <tbody>${cats.map((c, i) => {
+          const rowId = `row-gcat-${i}`;
           const g = grow(c[M].s26, c[M].s25);
           const a = hasTgt(c[M].tgt26) ? ach(c[M].s26, c[M].tgt26) : null;
-          return `<tr>
+          return `<tr id="${rowId}" class="row-clickable" onclick="toggleGrowthCatRow('${rowId}', '${c.category.replace(/'/g,"\\'")}')">
+            <td><span class="expand-icon">▶</span></td>
             <td style="color:${catColor(c.category)}">${c.category}</td>
             <td class="num">${fmt(c[M].s25)}</td>
             <td class="num" style="color:${C.cyan}">${fmt(c[M].s26)}</td>
@@ -1663,14 +1776,15 @@ function pgManagers(D) {
     ` : `
       <!-- SINGLE MANAGER VIEW -->
       <div class="chart-grid cols-2" style="margin-top:20px">
+        ${card('👥 Top Account for Manager', 'Sales 2026', cw('sm-top-acc', '350'))}
         ${card('👥 Top Outlets for Manager', 'Sales 2026', cw('sm-top-cust', '350'))}
-        ${card('📈 Growth by Outlet', 'Year over Year %', cw('sm-cust-grow', '350'))}
       </div>
       
       <div class="chart-card" style="margin-top:20px">
-        <div class="chart-header"><div class="chart-title">📋 Outlets for ${filtSm}</div></div>
+        <div class="chart-header"><div class="chart-title">📋 Outlets for ${filtSm} <span style="font-size:11px;opacity:0.6;font-weight:400">Click ▶ to expand → Category → SKU</span></div></div>
         <table class="data-table">
           <thead><tr>
+            <th style="width:28px"></th>
             <th>#</th>
             ${thSort('Outlet Name', 'customer')}
             ${thSort('Sales 25', 's25')}
@@ -1680,13 +1794,16 @@ function pgManagers(D) {
             ${thSort('Return 26 %', 'retP')}
           </tr></thead>
           <tbody>${custView.slice(0, 50).map((c, i) => {
+            const rowId = `row-sm-cust-${i}`;
+            const origName = c.original_customer || c.customer;
             const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
             const gAbs = s26 - s25;
             const g = grow(s26, s25);
             const rp26 = retP(s26, r26);
-            return `<tr>
+            return `<tr id="${rowId}" class="row-clickable" onclick="toggleManagerOutletRow('${rowId}', '${origName.replace(/'/g,"\\'")}')">
+              <td><span class="expand-icon">▶</span></td>
               <td>${i + 1}</td>
-              <td><strong>${c.customer}</strong></td>
+              <td><strong>${c.customer}</strong><br><span style="font-size:10px;opacity:0.5">${trunc(cleanEn(origName), 28)}</span></td>
               <td class="num">${fmt(s25)}</td>
               <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
               <td class="num">${fmt(gAbs)}</td>
@@ -1694,7 +1811,7 @@ function pgManagers(D) {
               <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
             </tr>`;
           }).join('')}
-          ${custView.length > 50 ? `<tr><td colspan="7" style="text-align:center;color:#8899bb">... and ${custView.length - 50} more outlets</td></tr>` : ''}
+          ${custView.length > 50 ? `<tr><td colspan="8" style="text-align:center;color:#8899bb">... and ${custView.length - 50} more outlets</td></tr>` : ''}
           </tbody>
         </table>
       </div>
@@ -1748,22 +1865,27 @@ function pgManagers(D) {
         options: barOpts(true),
       });
     } else {
-      const topC = custView.slice(0, 10);
-      mkChart('sm-top-cust', { type: 'bar',
-        data: { labels: topC.map(c => wrapLabel(c.customer, 15)),
-          datasets: [
-            { label: '2026', data: topC.map(c => c[M].s26), backgroundColor: C.cyan  + 'CC', borderRadius: 3 },
-          ] },
+      // Group by Account (Invoice lines/Partner) for Top Account
+      const accMap = {};
+      custView.forEach(c => {
+        const n = cleanEn(c.original_customer || c.customer);
+        if(!accMap[n]) accMap[n] = 0;
+        accMap[n] += c[M].s26;
+      });
+      const topAcc = Object.entries(accMap).map(([k,v]) => ({name:k, val:v})).sort((a,b)=>b.val - a.val).slice(0, 10);
+      
+      mkChart('sm-top-acc', { type: 'bar',
+        data: { labels: topAcc.map(c => wrapLabel(c.name, 15)),
+          datasets: [{ label: '2026', data: topAcc.map(c => c.val), backgroundColor: C.blueL + 'CC', borderRadius: 3 }] },
         options: { ...barOpts(), plugins: { legend: { display: false } } },
       });
-      
-      const growC = [...custView].filter(c => c[M].s25 > 0).sort((a, b) => grow(b[M].s26, b[M].s25) - grow(a[M].s26, a[M].s25)).slice(0, 10);
-      mkChart('sm-cust-grow', { type: 'bar',
-        data: { labels: growC.map(c => wrapLabel(c.customer, 15)),
-          datasets: [{ data: growC.map(c => grow(c[M].s26, c[M].s25)),
-            backgroundColor: growC.map(c => grow(c[M].s26, c[M].s25) >= 0 ? C.green + 'CC' : C.red + 'CC'),
-            borderRadius: 4, datalabels: { formatter: v => fmtP(v) } }] },
-        options: barOpts(true),
+
+      // Top Outlets (Partner + Outlet)
+      const topC = custView.slice(0, 10);
+      mkChart('sm-top-cust', { type: 'bar',
+        data: { labels: topC.map(c => wrapLabel(cleanEn(c.original_customer || c.customer) + ' / ' + c.customer, 25)),
+          datasets: [{ label: '2026', data: topC.map(c => c[M].s26), backgroundColor: C.cyan  + 'CC', borderRadius: 3 }] },
+        options: { ...barOpts(), plugins: { legend: { display: false } } },
       });
       
       // Fetch drilldown for selected manager
