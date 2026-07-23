@@ -1827,8 +1827,8 @@ function pgManagers(D) {
   }
 
   const allCustsForView = D.customer_data.filter(c => (!filtSm || c.manager === filtSm) && (c[M].s26 > 0 || c[M].s25 > 0));
-    const distinctCustomers = new Set(allCustsForView.map(c => cleanEn(c.original_customer || c.customer))).size;
-    const distinctOutlets = allCustsForView.length;
+  const distinctCustomers = new Set(allCustsForView.map(c => cleanEn(c.original_customer || c.customer))).size;
+  const distinctOutlets = new Set(allCustsForView.map(c => c.customer)).size;
     const totalCompanySales26 = D.meta[M].s26 || 0;
     const mgrContrib = totalCompanySales26 ? (totalSales26 / totalCompanySales26) * 100 : 0;
 
