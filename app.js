@@ -580,11 +580,11 @@ window.toggleSmRow = (rowId, smName) => {
     const smData = STATE.data.manager_data.find(c => c.manager === smName);
     const custsForSm = STATE.data.customer_data.filter(c => c.manager === smName && (c[M].s26 > 0 || c[M].s25 > 0));
     
-    const distinctCustomers = new Set(custsForSm.map(c => cleanEn(c.original_customer || c.customer))).size;
+    const distinctCustomers = new Set(custsForSm.map(c => c.original_customer).filter(Boolean)).size;
     const custs25sm = custsForSm.filter(c => c[M].s25 > 0);
     const custs26sm = custsForSm.filter(c => c[M].s26 > 0);
-    const distinctOutlets25sm = new Set(custs25sm.map(c => c.customer)).size;
-    const distinctOutlets26sm = new Set(custs26sm.map(c => c.customer)).size;
+    const distinctOutlets25sm = new Set(custs25sm.map(c => c.outlet_code).filter(Boolean)).size;
+    const distinctOutlets26sm = new Set(custs26sm.map(c => c.outlet_code).filter(Boolean)).size;
     
     const s25 = smData[M].s25;
     const s26 = smData[M].s26;
@@ -1892,10 +1892,10 @@ function pgManagers(D) {
   const allCustsBase = D.customer_data.filter(c => !filtSm || c.manager === filtSm);
   const custs25 = allCustsBase.filter(c => c[M].s25 > 0);
   const custs26 = allCustsBase.filter(c => c[M].s26 > 0);
-  const distinctCustomers25 = new Set(custs25.map(c => cleanEn(c.original_customer || c.customer))).size;
-  const distinctCustomers26 = new Set(custs26.map(c => cleanEn(c.original_customer || c.customer))).size;
-  const distinctOutlets25 = new Set(custs25.map(c => c.customer)).size;
-  const distinctOutlets26 = new Set(custs26.map(c => c.customer)).size;
+  const distinctCustomers25 = new Set(custs25.map(c => c.original_customer).filter(Boolean)).size;
+  const distinctCustomers26 = new Set(custs26.map(c => c.original_customer).filter(Boolean)).size;
+  const distinctOutlets25 = new Set(custs25.map(c => c.outlet_code).filter(Boolean)).size;
+  const distinctOutlets26 = new Set(custs26.map(c => c.outlet_code).filter(Boolean)).size;
   const totalCompanySales26 = D.meta[M].s26 || 0;
   const mgrContrib = totalCompanySales26 ? (totalSales26 / totalCompanySales26) * 100 : 0;
 

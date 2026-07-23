@@ -149,8 +149,10 @@ def parse_forecast(ws):
     return result
 
 # ── Actual parser ─────────────────────────────────────────────────────────────
-def parse_actual(ws, channel_map, ST, class_map, manager_map, outlet_map, label):
-    """Stream-parse an Actual sheet → list of compact rows"""
+def parse_actual(ws, channel_map, ST, class_map, manager_map, outlet_map,
+                 outlet_code_map, partner_map, label):
+    """Stream-parse an Actual sheet → list of compact rows
+    cu key is now Partner + Outlet (one row per outlet branch)."""
     out = []
     skipped_nodate = 0
     skipped_zero   = 0
@@ -164,7 +166,6 @@ def parse_actual(ws, channel_map, ST, class_map, manager_map, outlet_map, label)
         if not any(c is not None for c in row): continue
 
         rd = dict(zip(headers, row))
-        # (Debug prints removed)
 
         month = row_month(rd.get("Delivery Date"))
         if not month: skipped_nodate += 1; continue
@@ -179,10 +180,16 @@ def parse_actual(ws, channel_map, ST, class_map, manager_map, outlet_map, label)
         ct = r4(ct_raw)
         cp = ri(cp_raw)
 
-        partner = ss(rd.get("Invoice Partner Display Name.1") or
-                     rd.get("Invoice lines/Partner") or
+        # Customer (Invoice lines/Partner) — the parent
+        partner = ss(rd.get("Invoice lines/Partner") or
+                     rd.get("Invoice Partner Display Name.1") or
                      rd.get("Invoice Partner Display Name") or
                      rd.get("Partner") or "")
+        # Outlet key: use Partner + Outlet column (one per branch)
+        partner_outlet = ss(rd.get("Partner + Outlet") or partner)
+        # Outlet Code — unique branch identifier
+        oc = ss(rd.get("Outlet Code") or "")
+
         tag = ss(rd.get("Tags") or rd.get("tags") or
                  rd.get("Classification") or rd.get("Customer Category") or "")
         ch  = ss(rd.get("Channel") or rd.get("channel") or
@@ -195,21 +202,34 @@ def parse_actual(ws, channel_map, ST, class_map, manager_map, outlet_map, label)
             if norm != partner: channel_map[norm] = ch
             m2 = re.match(r"^\[([^\]]+)\]", partner)
             if m2: channel_map["__code__" + m2.group(1)] = ch
-            
+            # Also map partner_outlet to same channel
+            if partner_outlet != partner:
+                channel_map[partner_outlet] = ch
+
         sm = ss(rd.get("Sales Manager") or "")
         pe = ss(rd.get("Partner English") or "")
+        # Manager / outlet name maps keyed by partner_outlet
+        if partner_outlet and sm: manager_map[partner_outlet] = sm
+        if partner_outlet and pe: outlet_map[partner_outlet] = pe
+        # Also keep manager for the parent customer
         if partner and sm: manager_map[partner] = sm
-        if partner and pe: outlet_map[partner] = pe
+
+        # Store outlet code and parent partner for each partner_outlet
+        if partner_outlet and oc:
+            outlet_code_map[partner_outlet] = oc
+        if partner_outlet:
+            partner_map[partner_outlet] = partner
 
         code = ss(rd.get("Code") or "")
         inv_type = ss(rd.get("Invoice lines/Number Type") or "")
         ref      = ss(rd.get("Invoice lines/Reference") or "")
         rf_r = 1 if (ref and ref[0].upper() == "R") else 0
 
+        # cu is now keyed by partner_outlet (outlet-level granularity)
         out.append([
             month,
             ST.intern(code),
-            ST.intern(partner),
+            ST.intern(partner_outlet),
             ST.intern(inv_type),
             rf_r,
             tn, ct, cp,
@@ -277,6 +297,8 @@ def main():
     class_map    = {}
     manager_map  = {}
     outlet_map   = {}
+    outlet_code_map = {}   # partner_outlet → Outlet Code
+    partner_map    = {}    # partner_outlet → Invoice lines/Partner (parent customer)
 
     ws_main = wb["Main Data"]
     main_headers = None
@@ -328,8 +350,8 @@ def main():
     # 5. Parse actual sheets (streaming — handles 700K rows efficiently)
     print("\n📦 Parsing actual sheets (streaming)…")
     ST = StringTable()
-    rows25 = parse_actual(wb[sheet_act25], channel_map, ST, class_map, manager_map, outlet_map, sheet_act25)
-    rows26 = parse_actual(wb[sheet_act26], channel_map, ST, class_map, manager_map, outlet_map, sheet_act26)
+    rows25 = parse_actual(wb[sheet_act25], channel_map, ST, class_map, manager_map, outlet_map, outlet_code_map, partner_map, sheet_act25)
+    rows26 = parse_actual(wb[sheet_act26], channel_map, ST, class_map, manager_map, outlet_map, outlet_code_map, partner_map, sheet_act26)
     wb.close()
 
     strings = ST.to_list()
@@ -341,6 +363,14 @@ def main():
 
     # 7. Write output
     print(f"\n💾 Writing {OUTPUT_PATH}…")
+    print(f"   Outlet codes: {len(outlet_code_map)} mappings")
+    print(f"   Partner→Outlet links: {len(partner_map)} mappings")
+    # Count distinct customers vs outlets
+    distinct_customers = len(set(partner_map.values())) if partner_map else 0
+    distinct_outlets   = len(set(outlet_code_map.values())) if outlet_code_map else 0
+    print(f"   Distinct Customers (Invoice lines/Partner): {distinct_customers}")
+    print(f"   Distinct Outlets (Outlet Code): {distinct_outlets}")
+
     payload = {
         "version":     3,
         "generated":   datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -352,6 +382,8 @@ def main():
         "classMap":    class_map,
         "managerMap":  manager_map,
         "outletMap":   outlet_map,
+        "outletCodeMap": outlet_code_map,
+        "partnerMap":    partner_map,
         "fc25":        fc25,
         "fc26":        fc26,
         "rows25":      rows25,

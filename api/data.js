@@ -127,14 +127,16 @@ function resolve(acc) {
 // ─────────────────────────────────────────────────────────────────
 function buildLookups(pd) {
   if (pd._lookups) return pd._lookups;
-  const { strings, productMap, categoryMap, channelMap, managerMap, outletMap } = pd;
+  const { strings, productMap, categoryMap, channelMap, managerMap, outletMap, outletCodeMap, partnerMap } = pd;
 
   // For each string ID, pre-compute its derived values
-  const isRINV_arr  = new Uint8Array(strings.length);   // 1 if type='RINV'
-  const ch_arr      = new Array(strings.length);        // channel for customer IDs
-  const ca_arr      = new Array(strings.length);        // category for product code IDs
-  const manager_arr = new Array(strings.length);        // manager for customer IDs
-  const outlet_arr  = new Array(strings.length);        // english outlet name for customer IDs
+  const isRINV_arr      = new Uint8Array(strings.length);   // 1 if type='RINV'
+  const ch_arr          = new Array(strings.length);        // channel for customer IDs
+  const ca_arr          = new Array(strings.length);        // category for product code IDs
+  const manager_arr     = new Array(strings.length);        // manager for customer IDs
+  const outlet_arr      = new Array(strings.length);        // english outlet name for customer IDs
+  const outlet_code_arr = new Array(strings.length);        // Outlet Code for customer IDs
+  const partner_arr     = new Array(strings.length);        // Invoice lines/Partner (parent customer)
 
   for (let i = 0; i < strings.length; i++) {
     const s = strings[i];
@@ -153,11 +155,13 @@ function buildLookups(pd) {
     ca_arr[i] = categoryMap[s] || 'Unknown';
     
     // Store manager and outlet English names
-    manager_arr[i] = (managerMap && managerMap[s]) ? managerMap[s] : 'Unassigned';
-    outlet_arr[i]  = (outletMap && outletMap[s]) ? outletMap[s] : s; // default to original partner name
+    manager_arr[i]     = (managerMap && managerMap[s]) ? managerMap[s] : 'Unassigned';
+    outlet_arr[i]      = (outletMap && outletMap[s]) ? outletMap[s] : s; // default to original partner name
+    outlet_code_arr[i] = (outletCodeMap && outletCodeMap[s]) ? outletCodeMap[s] : '';
+    partner_arr[i]     = (partnerMap && partnerMap[s]) ? partnerMap[s] : s; // default to itself
   }
 
-  pd._lookups = { isRINV_arr, ch_arr, ca_arr, manager_arr, outlet_arr };
+  pd._lookups = { isRINV_arr, ch_arr, ca_arr, manager_arr, outlet_arr, outlet_code_arr, partner_arr };
   return pd._lookups;
 }
 
@@ -372,7 +376,7 @@ function buildResponse(pd, months, rawFilters) {
     });
   }
 
-  // ── customer_data ─────────────────────────────────────────────
+  // ── customer_data (outlet-level) ─────────────────────────────────
   const allCus = new Set([...Object.keys(agg25.byCustomer), ...Object.keys(agg26.byCustomer)]);
   const cuIds25 = new Set(Object.keys(agg25.byCustomer));
   const customer_data = [];
@@ -383,11 +387,12 @@ function buildResponse(pd, months, rawFilters) {
     const r26 = resolve(agg26.byCustomer[cuId] || newAcc());
     const outletName = lookups.outlet_arr[cuId] || cust;
     customer_data.push({
-      customer: outletName,
-      original_customer: cust,
+      customer: outletName,                                 // Partner + Outlet display name
+      original_customer: lookups.partner_arr[cuId] || cust, // Invoice lines/Partner (parent)
+      outlet_code: lookups.outlet_code_arr[cuId] || '',     // Outlet Code (unique branch ID)
       manager: lookups.manager_arr[cuId] || 'Unassigned',
-      channel:  channelMap[cust] || 'Other',
-      classification: classMap ? (classMap[cust] || '–') : '–',
+      channel:  channelMap[cust] || channelMap[lookups.partner_arr[cuId]] || 'Other',
+      classification: classMap ? (classMap[cust] || classMap[lookups.partner_arr[cuId]] || '–') : '–',
       in_25:    cuIds25.has(cuId),
       ton:    { s25: r25.ton.s,    r25: r25.ton.r,    s26: r26.ton.s,    r26: r26.ton.r    },
       carton: { s25: r25.carton.s, r25: r25.carton.r, s26: r26.carton.s, r26: r26.carton.r },
