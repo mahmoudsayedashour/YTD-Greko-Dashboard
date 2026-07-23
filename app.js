@@ -368,6 +368,29 @@ function cleanEn(s) {
   return r || s.replace(/^\[.*?\]\s*/, '').trim(); // fallback: at least strip bracket
 }
 
+function groupCustomersByPartner(custDataArray, measure) {
+  const map = {};
+  for (const c of custDataArray) {
+    const parentName = cleanEn(c.original_customer || c.customer);
+    if (!map[parentName]) {
+      map[parentName] = {
+        name: parentName,
+        original_customer: c.original_customer, // store one of them for drilldown
+        s25: 0, s26: 0, r25: 0, r26: 0, tgt26: 0,
+        outlets: []
+      };
+    }
+    const o = map[parentName];
+    o.s25 += c[measure].s25 || 0;
+    o.s26 += c[measure].s26 || 0;
+    o.r25 += c[measure].r25 || 0;
+    o.r26 += c[measure].r26 || 0;
+    o.tgt26 += c[measure].tgt26 || 0;
+    o.outlets.push(c);
+  }
+  return Object.values(map);
+}
+
 // ═══════════════════════════════════════════════════════════════
 // DRILL-DOWN LOGIC & CACHING
 // ═══════════════════════════════════════════════════════════════
@@ -539,22 +562,118 @@ function renderNestedProductTable(dataArray, title) {
 }
 
 
-window.toggleCustomerRow = (rowId, customerName) => {
-  toggleRowLevel(rowId, 'L1', 11, async () => {
-    const data = await fetchDrilldownData({ customer: customerName });
+window.toggleSmRow = (rowId, smName) => {
+  toggleRowLevel(rowId, 'L1', 9, () => {
+    const M = STATE.measure;
+    const smData = STATE.data.manager_data.find(c => c.manager === smName);
+    const custsForSm = STATE.data.customer_data.filter(c => c.manager === smName && (c[M].s26 > 0 || c[M].s25 > 0));
+    
+    const distinctCustomers = new Set(custsForSm.map(c => cleanEn(c.original_customer || c.customer))).size;
+    const distinctOutlets = custsForSm.length;
+    
+    const s25 = smData[M].s25;
+    const s26 = smData[M].s26;
+    const g = grow(s26, s25);
+    
+    const topSalesOutlet = [...custsForSm].sort((a,b) => b[M].s26 - a[M].s26)[0];
+    const topRetOutlet = [...custsForSm].sort((a,b) => b[M].r26 - a[M].r26)[0];
+
+    const html = renderSummaryCard(smName + ' Summary', [
+      { label: 'Total Customers', value: distinctCustomers },
+      { label: 'Total Outlets', value: distinctOutlets },
+      { label: 'Sales Ton', value: fmt(s26), color: C.cyan },
+      { label: 'Growth %', value: fmtP(g), color: g >= 0 ? C.green : C.red },
+      { label: 'Top Outlet (Sales)', value: topSalesOutlet ? topSalesOutlet.customer : 'N/A', color: C.gold },
+      { label: 'Top Outlet (Return)', value: topRetOutlet && topRetOutlet[M].r26 > 0 ? topRetOutlet.customer : 'N/A', color: C.red },
+    ]);
+    return Promise.resolve(`<div class="nested-card">${html}</div>`);
+  });
+};
+
+window.toggleCustomerRow = (rowId, origCustomerName) => {
+  toggleRowLevel(rowId, 'L1', 11, () => {
+    const M = STATE.measure;
+    
+    const outlets = STATE.data.customer_data.filter(c => cleanEn(c.original_customer || c.customer) === origCustomerName && (c[M].s26 > 0 || c[M].s25 > 0));
+    outlets.sort((a,b) => b[M].s26 - a[M].s26);
+    
+    const tableHtml = `
+      <div class="nested-card" style="margin:0; box-shadow:none; border:none; padding:0;">
+        <div class="chart-header" style="margin-bottom: 12px; padding:0;">
+          <div class="chart-title" style="font-size:12px; opacity:0.8;">📋 Outlets Summary – ${origCustomerName}</div>
+        </div>
+        <div class="data-table-wrapper" style="max-height:400px;overflow-y:auto; border-radius: 8px;">
+          <table class="data-table" style="margin:0;">
+            <thead style="position:sticky; top:0; z-index:2; background:var(--bg-card);"><tr>
+              <th>#</th>
+              <th style="text-align:left">Outlet Name</th>
+              <th class="num">Sales 25</th>
+              <th class="num">Return 25 %</th>
+              <th class="num">Target 26</th>
+              <th class="num">Sales 26</th>
+              <th class="num">Return 26 %</th>
+              <th class="num">Ach %</th>
+              <th class="num">Growth Ton</th>
+              <th class="num">Growth %</th>
+            </tr></thead>
+            <tbody>${outlets.map((c, i) => {
+              const outId = `nested-out-${rowId}-${i}`;
+              const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r25 = c[M].r25, r26 = c[M].r26;
+              const gAbs = s26 - s25;
+              const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
+              const rp25 = retP(s25, r25);
+              const rp26 = retP(s26, r26);
+              return `<tr id="${outId}" class="row-clickable" onclick="toggleCustomerOutletRow('${outId}', '${(c.original_customer||'').replace(/'/g,"\\'")}', '${c.customer.replace(/'/g,"\\'")}')">
+                <td><span class="expand-icon">▶</span> ${i + 1}</td>
+                <td style="text-align:left; color:${C.cyan}; font-weight:bold;">${c.customer}</td>
+                <td class="num">${fmt(s25)}</td>
+                <td class="num">${rp25.toFixed(1)}%</td>
+                <td class="num">${hasTgt(t26) ? fmt(t26) : '–'}</td>
+                <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+                <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
+                <td class="num">${achBadge(a)}</td>
+                <td class="num">${fmt(gAbs)}</td>
+                <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    const s26 = outlets.reduce((s,c) => s + c[M].s26, 0);
+    const s25 = outlets.reduce((s,c) => s + c[M].s25, 0);
+    const t26 = outlets.reduce((s,c) => s + (c[M].tgt26||0), 0);
+    const g = grow(s26, s25);
+    const a = hasTgt(t26) ? ach(s26, t26) : null;
+
+    const summaryHtml = renderSummaryCard(origCustomerName, [
+      { label: 'Outlets', value: outlets.length },
+      { label: 'Sales 26', value: fmt(s26), color: C.cyan },
+      { label: 'Growth %', value: fmtP(g), color: g >= 0 ? C.green : C.red },
+      { label: 'Ach %', value: a != null ? a.toFixed(1) + '%' : 'N/A', color: a != null && a >= 100 ? C.green : C.gold }
+    ]);
+
+    return Promise.resolve(`<div class="nested-card">${summaryHtml}${tableHtml}</div>`);
+  });
+};
+
+window.toggleCustomerOutletRow = (rowId, origCustomerName, outletName) => {
+  toggleRowLevel(rowId, 'L2', 11, async () => {
+    const data = await fetchDrilldownData({ customer: origCustomerName, ou: outletName });
     const M = STATE.measure;
     
     const catView = data.category_data.filter(c => c[M].s26 > 0 || c[M].s25 > 0);
     catView.sort((a,b) => b[M].s26 - a[M].s26);
     
     const tableHtml = `
-      <div class="nested-card" style="margin:0; box-shadow:none; border:none; padding:0;">
+      <div class="nested-card" style="margin:0; box-shadow:none; border:none; padding:0; background:rgba(0,0,0,0.2);">
         <div class="chart-header" style="margin-bottom: 12px; padding:0;">
-          <div class="chart-title" style="font-size:12px; opacity:0.8;">📋 Category Summary – ${customerName}</div>
+          <div class="chart-title" style="font-size:12px; opacity:0.8;">📋 Category Summary – ${outletName}</div>
         </div>
         <div class="data-table-wrapper" style="max-height:400px;overflow-y:auto; border-radius: 8px;">
           <table class="data-table" style="margin:0;">
-            <thead style="position:sticky; top:0; z-index:2; background:var(--bg-card);"><tr>
+            <thead style="position:sticky; top:0; z-index:3; background:var(--bg-card);"><tr>
               <th>#</th>
               <th style="text-align:left">Category</th>
               <th class="num">Sales 25</th>
@@ -567,13 +686,13 @@ window.toggleCustomerRow = (rowId, customerName) => {
               <th class="num">Growth %</th>
             </tr></thead>
             <tbody>${catView.map((c, i) => {
-              const catId = `nested-cat-cust-${i}`;
+              const catId = `nested-cat-out-${rowId}-${i}`;
               const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r25 = c[M].r25, r26 = c[M].r26;
               const gAbs = s26 - s25;
               const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
               const rp25 = retP(s25, r25);
               const rp26 = retP(s26, r26);
-              return `<tr id="${catId}" class="row-clickable" onclick="toggleCategoryRow('${catId}', '${c.category}', 'customer', '${customerName}')">
+              return `<tr id="${catId}" class="row-clickable" onclick="toggleCategoryRow('${catId}', '${c.category}', 'outlet', '${outletName.replace(/'/g,"\\'")}', '${origCustomerName.replace(/'/g,"\\'")}')">
                 <td><span class="expand-icon">▶</span> ${i + 1}</td>
                 <td style="text-align:left; color:${catColor(c.category)}; font-weight:bold;">${c.category}</td>
                 <td class="num">${fmt(s25)}</td>
@@ -591,31 +710,20 @@ window.toggleCustomerRow = (rowId, customerName) => {
       </div>
     `;
     
-    const custRow = data.customer_data.find(c => c.customer === customerName);
-    const s26 = custRow ? custRow[M].s26 : 0;
-    const g = custRow ? grow(custRow[M].s26, custRow[M].s25) : 0;
-    const a = custRow && hasTgt(custRow[M].tgt26) ? ach(custRow[M].s26, custRow[M].tgt26) : null;
-    const catCount = catView.length;
-
-    const summaryHtml = renderSummaryCard(customerName, [
-      { label: 'Categories', value: catCount },
-      { label: 'Sales 26', value: fmt(s26), color: C.cyan },
-      { label: 'Growth %', value: fmtP(g), color: g >= 0 ? C.green : C.red },
-      { label: 'Ach %', value: a != null ? a.toFixed(1) + '%' : 'N/A', color: a != null && a >= 100 ? C.green : C.gold }
-    ]);
-
-    return `<div class="nested-card">${summaryHtml}${tableHtml}</div>`;
+    return `<div class="nested-card" style="margin-top:10px">${tableHtml}</div>`;
   });
 };
 
-window.toggleCategoryRow = (rowId, categoryName, contextType = null, contextValue = null) => {
-  const level = contextType ? 'L2' : 'L1';
+window.toggleCategoryRow = (rowId, categoryName, contextType = null, contextValue = null, extraContext = null) => {
+  const level = contextType === 'outlet' ? 'L3' : (contextType ? 'L2' : 'L1');
   toggleRowLevel(rowId, level, 11, async () => {
     let sourceData = STATE.data;
     if (contextType === 'channel') {
        sourceData = await fetchDrilldownData({ channel: contextValue });
     } else if (contextType === 'customer') {
        sourceData = await fetchDrilldownData({ customer: contextValue });
+    } else if (contextType === 'outlet') {
+       sourceData = await fetchDrilldownData({ customer: extraContext, ou: contextValue });
     }
     const M = STATE.measure;
     const catRow = sourceData.category_data.find(c => c.category === categoryName);
@@ -1185,12 +1293,13 @@ function pgCustomers(D) {
       ${card('↩️ Top 10 by Return Ton', 'Sorted by Return Ton ↓ — Invoice lines/Partner (English)', cw('ch-c-ret', '300'))}
     </div>
     <div class="chart-card" style="margin-top:20px">
-      <div class="chart-header"><div class="chart-title">📋 Customer Detail Table <span style="font-size:11px;opacity:0.6;font-weight:400">Click ▶ to drill down → Category → SKU</span></div></div>
+      <div class="chart-header"><div class="chart-title">📋 Customer Detail Table <span style="font-size:11px;opacity:0.6;font-weight:400">Click ▶ to drill down → Outlet → Category → SKU</span></div></div>
       <div class="data-table-wrapper" style="max-height:400px;overflow-y:auto">
         <table class="data-table">
           <thead><tr>
+            <th style="width:28px"></th>
             <th>#</th>
-            ${thSort('Customer', 'name')}
+            ${thSort('Customer Name', 'name')}
             ${thSort('Sales 25', 's25')}
             ${thSort('Return 25 %', 'retP25')}
             ${thSort('Sales 26', 's26')}
@@ -1198,26 +1307,32 @@ function pgCustomers(D) {
             ${thSort('Growth Ton', 'gAbs')}
             ${thSort('Growth %', 'grow')}
           </tr></thead>
-          <tbody>${sortData(cs.map(c => ({ ...c, name: c.customer }))).map((c, i) => {
-            const rowId = `row-cust-${i}`;
-            const origName = c.original_customer || c.customer;
-            const s25 = c[M].s25, s26 = c[M].s26, t26 = c[M].tgt26, r25 = c[M].r25, r26 = c[M].r26;
-            const gAbs = s26 - s25;
-            const g = grow(s26, s25), a = hasTgt(t26) ? ach(s26, t26) : null;
-            const rp25 = retP(s25, r25);
-            const rp26 = retP(s26, r26);
-            const tier = i < 10 ? '🥇' : i < 10 + silver.length ? '🥈' : '🥉';
-            return `<tr id="${rowId}" class="row-clickable" onclick="toggleCustomerRow('${rowId}', '${origName.replace(/'/g,"\\'")}')">
-              <td><span class="expand-icon">▶</span> ${tier} ${i + 1}</td>
-              <td><strong>${trunc(c.customer, 28)}</strong><br><span style="font-size:10px;opacity:0.5">${trunc(cleanEn(origName), 28)}</span></td>
-              <td class="num">${fmt(s25)}</td>
-              <td class="num">${rp25.toFixed(1)}%</td>
-              <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
-              <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
-              <td class="num">${fmt(gAbs)}</td>
-              <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
-            </tr>`;
-          }).join('')}</tbody>
+          <tbody>${(() => {
+            const grouped = groupCustomersByPartner(cs, M);
+            grouped.sort((a,b) => b.s26 - a.s26);
+            const silverLen = Math.floor(grouped.length * 0.3);
+            return grouped.map((c, i) => {
+              const rowId = `row-cust-${i}`;
+              const origName = c.name; // grouped name is already cleanEn(original_customer)
+              const s25 = c.s25, s26 = c.s26, r25 = c.r25, r26 = c.r26;
+              const gAbs = s26 - s25;
+              const g = grow(s26, s25);
+              const rp25 = retP(s25, r25);
+              const rp26 = retP(s26, r26);
+              const tier = i < 10 ? '🥇' : i < 10 + silverLen ? '🥈' : '🥉';
+              return `<tr id="${rowId}" class="row-clickable" onclick="toggleCustomerRow('${rowId}', '${origName.replace(/'/g,"\\'")}')">
+                <td><span class="expand-icon">▶</span></td>
+                <td>${tier} ${i + 1}</td>
+                <td><strong>${trunc(origName, 28)}</strong></td>
+                <td class="num">${fmt(s25)}</td>
+                <td class="num">${rp25.toFixed(1)}%</td>
+                <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+                <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
+                <td class="num">${fmt(gAbs)}</td>
+                <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+              </tr>`;
+            }).join('');
+          })()}</tbody>
         </table>
       </div>
     </div>
@@ -1710,120 +1825,122 @@ function pgManagers(D) {
     const custsForSm = D.customer_data.filter(c => c.manager === filtSm && (c[M].s26 > 0 || c[M].s25 > 0));
     custView = [...custsForSm].sort((a, b) => b[M].s26 - a[M].s26);
     
-    // To get category and sku view, we would need to fetch drilldown data.
-    // We will render placeholders that fetch when rendered.
-  }
+    const allCustsForView = D.customer_data.filter(c => (!filtSm || c.manager === filtSm) && (c[M].s26 > 0 || c[M].s25 > 0));
+    const distinctCustomers = new Set(allCustsForView.map(c => cleanEn(c.original_customer || c.customer))).size;
+    const distinctOutlets = allCustsForView.length;
+    const totalCompanySales26 = D.meta[M].s26 || 0;
+    const mgrContrib = totalCompanySales26 ? (totalSales26 / totalCompanySales26) * 100 : 0;
 
-  document.getElementById('page-managers').innerHTML = `
-    ${renderInsightsBar(insights)}
-    <div class="channel-controls">
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <label style="font-size:12px;color:#8899bb">Sales Manager:</label>
-        <select id="sm-filter-sel" class="ch-select">
-          <option value="">All Managers</option>
-          ${smList.map(c => `<option value="${c}" ${filtSm === c ? 'selected' : ''}>${c}</option>`).join('')}
-        </select>
-      </div>
-    </div>
-    
-    <div class="kpi-grid">
-      ${kpi('👨‍💼', 'Total Managers', mngrs.length, null, 'blue', '')}
-      ${kpi('🏪', 'Total Outlets', D.customer_data.filter(c => !filtSm || c.manager === filtSm).length, null, 'blue', '')}
-      ${kpi('📈', 'Growth (Manager Group)', fmtP(g), g, 'green', '')}
-      ${kpi('↩️', 'Return %', rp26.toFixed(1) + '%', rp26 > 10 ? -1 : 1, 'cyan', '')}
-    </div>
-
-    ${!filtSm ? `
-      <!-- ALL MANAGERS VIEW -->
-      <div class="chart-grid cols-2" style="margin-top:20px">
-        ${card('📊 Sales by Manager', '2025 vs 2026', cw('sm-bars', '350'))}
-        ${card('↩️ Returns by Manager', 'Return % 2026', cw('sm-ret-bars', '350'))}
-      </div>
-      <div class="chart-card" style="margin-top:20px">
-        <div class="chart-header"><div class="chart-title">📋 Sales Managers Ranking</div></div>
-        <table class="data-table">
-          <thead><tr>
-            <th>Rank</th>
-            ${thSort('Sales Manager', 'name')}
-            ${thSort('Sales 25', 's25')}
-            ${thSort('Sales 26', 's26')}
-            ${thSort('Growth Ton', 'gAbs')}
-            ${thSort('Growth %', 'grow')}
-            ${thSort('Return 26 %', 'retP')}
-            ${thSort('Contribution %', 'contrib')}
-          </tr></thead>
-          <tbody>${sortData(view).map((c, i) => {
-            const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
-            const gAbs = s26 - s25;
-            const g = grow(s26, s25);
-            const rp26 = retP(s26, r26);
-            const contrib = totalSales26 > 0 ? (s26 / totalSales26) * 100 : 0;
-            return `<tr>
-              <td style="color:${i < 3 ? C.gold : '#8899bb'}"><strong>#${i + 1}</strong></td>
-              <td style="font-weight:600; cursor:pointer;" class="sm-link" data-sm="${c.manager}">
-                <u>${c.manager}</u>
-              </td>
-              <td class="num">${fmt(s25)}</td>
-              <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
-              <td class="num">${fmt(gAbs)}</td>
-              <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
-              <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
-              <td class="num">${contrib.toFixed(1)}%</td>
-            </tr>`;
-          }).join('')}</tbody>
-        </table>
-      </div>
-    ` : `
-      <!-- SINGLE MANAGER VIEW -->
-      <div class="chart-grid cols-2" style="margin-top:20px">
-        ${card('👥 Top Account for Manager', 'Sales 2026', cw('sm-top-acc', '350'))}
-        ${card('👥 Top Outlets for Manager', 'Sales 2026', cw('sm-top-cust', '350'))}
-      </div>
-      
-      <div class="chart-card" style="margin-top:20px">
-        <div class="chart-header"><div class="chart-title">📋 Outlets for ${filtSm} <span style="font-size:11px;opacity:0.6;font-weight:400">Click ▶ to expand → Category → SKU</span></div></div>
-        <table class="data-table">
-          <thead><tr>
-            <th style="width:28px"></th>
-            <th>#</th>
-            ${thSort('Outlet Name', 'customer')}
-            ${thSort('Sales 25', 's25')}
-            ${thSort('Sales 26', 's26')}
-            ${thSort('Growth Ton', 'gAbs')}
-            ${thSort('Growth %', 'grow')}
-            ${thSort('Return 26 %', 'retP')}
-          </tr></thead>
-          <tbody>${custView.slice(0, 50).map((c, i) => {
-            const rowId = `row-sm-cust-${i}`;
-            const origName = c.original_customer || c.customer;
-            const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
-            const gAbs = s26 - s25;
-            const g = grow(s26, s25);
-            const rp26 = retP(s26, r26);
-            return `<tr id="${rowId}" class="row-clickable" onclick="toggleManagerOutletRow('${rowId}', '${origName.replace(/'/g,"\\'")}')">
-              <td><span class="expand-icon">▶</span></td>
-              <td>${i + 1}</td>
-              <td><strong>${c.customer}</strong><br><span style="font-size:10px;opacity:0.5">${trunc(cleanEn(origName), 28)}</span></td>
-              <td class="num">${fmt(s25)}</td>
-              <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
-              <td class="num">${fmt(gAbs)}</td>
-              <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
-              <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
-            </tr>`;
-          }).join('')}
-          ${custView.length > 50 ? `<tr><td colspan="8" style="text-align:center;color:#8899bb">... and ${custView.length - 50} more outlets</td></tr>` : ''}
-          </tbody>
-        </table>
-      </div>
-      
-      <div id="sm-drilldown-container" style="margin-top:20px">
-        <div style="text-align:center; padding:40px; color:#8899bb; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:12px;">
-          <div class="loader-spinner" style="margin:0 auto 15px auto"></div>
-          Loading category and SKU performance for ${filtSm}...
+    document.getElementById('page-managers').innerHTML = `
+      ${renderInsightsBar(insights)}
+      <div class="channel-controls">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:12px;color:#8899bb">Sales Manager:</label>
+          <select id="sm-filter-sel" class="ch-select">
+            <option value="">All Managers</option>
+            ${smList.map(c => `<option value="${c}" ${filtSm === c ? 'selected' : ''}>${c}</option>`).join('')}
+          </select>
         </div>
       </div>
-    `}
-  `;
+      
+      <div class="kpi-grid">
+        ${kpi('👨‍💼', 'Total Customers', distinctCustomers, null, 'blue', '')}
+        ${kpi('🏪', 'Total Outlets', distinctOutlets, null, 'blue', '')}
+        ${kpi('📈', 'Growth %', fmtP(g), g, 'green', '')}
+        ${kpi('↩️', 'Return %', rp26.toFixed(1) + '%', rp26 > 10 ? -1 : 1, 'cyan', '')}
+        ${kpi('💰', 'Total Company Sales (Ton)', fmt(totalCompanySales26), null, 'gold', '')}
+        ${kpi('📊', 'Manager Contribution %', mgrContrib.toFixed(1) + '%', null, 'cyan', '')}
+      </div>
+
+      ${!filtSm ? `
+        <!-- ALL MANAGERS VIEW -->
+        <div class="chart-grid cols-2" style="margin-top:20px">
+          ${card('📊 Sales by Manager', '2025 vs 2026', cw('sm-bars', '350'))}
+          ${card('↩️ Returns by Manager', 'Return % 2026', cw('sm-ret-bars', '350'))}
+        </div>
+        <div class="chart-card" style="margin-top:20px">
+          <div class="chart-header"><div class="chart-title">📋 Sales Managers Ranking</div></div>
+          <table class="data-table">
+            <thead><tr>
+              <th style="width:28px"></th>
+              <th>Rank</th>
+              ${thSort('Sales Manager', 'name')}
+              ${thSort('Sales 25', 's25')}
+              ${thSort('Sales 26', 's26')}
+              ${thSort('Growth Ton', 'gAbs')}
+              ${thSort('Growth %', 'grow')}
+              ${thSort('Return 26 %', 'retP')}
+              ${thSort('Contribution %', 'contrib')}
+            </tr></thead>
+            <tbody>${sortData(view).map((c, i) => {
+              const rowId = `row-mgr-${i}`;
+              const s25 = c[M].s25, s26 = c[M].s26, r26 = c[M].r26;
+              const gAbs = s26 - s25;
+              const g = grow(s26, s25);
+              const rp26 = retP(s26, r26);
+              const contrib = totalSales26 > 0 ? (s26 / totalSales26) * 100 : 0;
+              return `<tr id="${rowId}">
+                <td><span class="expand-icon row-clickable" onclick="toggleSmRow('${rowId}', '${c.manager.replace(/'/g,"\\'")}')">▶</span></td>
+                <td style="color:${i < 3 ? C.gold : '#8899bb'}"><strong>#${i + 1}</strong></td>
+                <td style="font-weight:600; cursor:pointer;" class="sm-link" data-sm="${c.manager}">
+                  <u>${c.manager}</u>
+                </td>
+                <td class="num">${fmt(s25)}</td>
+                <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+                <td class="num">${fmt(gAbs)}</td>
+                <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+                <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
+                <td class="num">${contrib.toFixed(1)}%</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+      ` : `
+        <!-- SINGLE MANAGER VIEW -->
+        <div class="chart-grid cols-2" style="margin-top:20px">
+          ${card('👥 Top Account for Manager', 'Sales 2026', cw('sm-top-acc', '350'))}
+          ${card('👥 Top Outlets for Manager', 'Sales 2026', cw('sm-top-cust', '350'))}
+        </div>
+        
+        <div class="chart-card" style="margin-top:20px">
+          <div class="chart-header"><div class="chart-title">📋 Customers for ${filtSm} <span style="font-size:11px;opacity:0.6;font-weight:400">Click ▶ to expand → Outlet → Category → SKU</span></div></div>
+          <table class="data-table">
+            <thead><tr>
+              <th style="width:28px"></th>
+              <th>#</th>
+              ${thSort('Customer Name', 'name')}
+              ${thSort('Sales 25', 's25')}
+              ${thSort('Sales 26', 's26')}
+              ${thSort('Growth Ton', 'gAbs')}
+              ${thSort('Growth %', 'grow')}
+              ${thSort('Return 26 %', 'retP')}
+            </tr></thead>
+            <tbody>${(() => {
+              const grouped = groupCustomersByPartner(custView, M);
+              grouped.sort((a,b) => b.s26 - a.s26);
+              return grouped.slice(0, 50).map((c, i) => {
+                const rowId = `row-sm-cust-${i}`;
+                const s25 = c.s25, s26 = c.s26, r26 = c.r26;
+                const gAbs = s26 - s25;
+                const g = grow(s26, s25);
+                const rp26 = retP(s26, r26);
+                return `<tr id="${rowId}" class="row-clickable" onclick="toggleCustomerRow('${rowId}', '${c.name.replace(/'/g,"\\'")}')">
+                  <td><span class="expand-icon">▶</span></td>
+                  <td>${i + 1}</td>
+                  <td><strong>${c.name}</strong></td>
+                  <td class="num">${fmt(s25)}</td>
+                  <td class="num" style="color:${C.cyan}">${fmt(s26)}</td>
+                  <td class="num">${fmt(gAbs)}</td>
+                  <td class="num">${badge(fmtP(g), g >= 0 ? 'badge-up' : 'badge-down')}</td>
+                  <td class="num" style="color:${rp26 > 10 ? C.red : rp26 > 5 ? C.gold : C.green}">${rp26.toFixed(1)}%</td>
+                </tr>`;
+              }).join('') + (grouped.length > 50 ? `<tr><td colspan="8" style="text-align:center;color:#8899bb">... and ${grouped.length - 50} more customers</td></tr>` : '');
+            })()}
+            </tbody>
+          </table>
+        </div>
+      `}
+    `;
 
   // Filter change event
   document.getElementById('sm-filter-sel').addEventListener('change', e => {
