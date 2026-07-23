@@ -282,12 +282,22 @@ def main():
     main_headers = None
     for row in ws_main.iter_rows(values_only=True):
         if main_headers is None:
-            main_headers = [ss(c) for c in row]; continue
+            main_headers = [ss(c) for c in row]
+            print(f"   [DEBUG] Main Data headers: {main_headers}")
+            continue
         rd = dict(zip(main_headers, row))
         code = ss(rd.get("Code") or rd.get("code") or "")
         if not code: continue
-        name = ss(rd.get("Product Name") or rd.get("ProductName") or rd.get("Name") or code)
-        cat  = ss(rd.get("Category") or rd.get("category") or "")
+        # Exact column names as per the workbook
+        name = ss(
+            rd.get("Invoice lines/Product") or
+            rd.get("Product Name") or rd.get("ProductName") or
+            rd.get("Name") or code
+        )
+        cat  = ss(
+            rd.get("Product Category") or
+            rd.get("Category") or rd.get("category") or ""
+        )
         if name: product_map[code]  = name
         if cat:  category_map[code] = cat
     print(f"   Main Data: {len(product_map)} products, {len(set(category_map.values()))} categories")
